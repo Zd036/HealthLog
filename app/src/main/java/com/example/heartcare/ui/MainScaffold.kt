@@ -1,0 +1,263 @@
+package com.example.heartcare.ui
+
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.heartcare.ui.theme.PrimaryBlue
+import com.example.heartcare.ui.theme.HintGray
+import com.example.heartcare.ui.home.HomeScreen
+import com.example.heartcare.ui.history.HistoryScreen
+import com.example.heartcare.ui.medication.MedicationScreen
+import com.example.heartcare.ui.settings.SettingsScreen
+import com.example.heartcare.ui.settings.SettingsViewModel
+import com.example.heartcare.ui.intakeoutput.IntakeOutputScreen
+import com.example.heartcare.ui.vitalsigns.VitalSignsScreen
+import com.example.heartcare.ui.compliance.ComplianceReportScreen
+import com.example.heartcare.ui.components.UiFeedbackBus
+import kotlinx.coroutines.launch
+
+/** 主脚手架：4 个可滑动页 + 中间大加号 + 顶层全屏子页面 */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+fun MainScaffold(modifier: Modifier = Modifier) {
+    val pages = listOf(MainTab.Home, MainTab.History, MainTab.Medication, MainTab.Settings)
+    val pagerState = rememberPagerState(pageCount = { pages.size })
+    val scope = rememberCoroutineScope()
+
+    val settingsVm: SettingsViewModel = appViewModel()
+    val settings by settingsVm.settings.collectAsStateWithLifecycle()
+    val ioEnabled = settings.enableIntakeOutput
+
+    var showAddSheet by rememberSaveable { mutableStateOf(false) }
+    var sub by remember { mutableStateOf<SubScreen>(SubScreen.None) }
+
+    // 应用级 SnackbarHost
+    val snackbarHostState = remember { SnackbarHostState() }
+    LaunchedEffect(Unit) {
+        UiFeedbackBus.messages.collect { msg ->
+            val result = snackbarHostState.showSnackbar(
+                message = msg.text,
+                actionLabel = msg.actionLabel,
+                duration = if (msg.long) SnackbarDuration.Long else SnackbarDuration.Short
+            )
+            if (result == SnackbarResult.ActionPerformed) msg.onAction?.invoke()
+        }
+    }
+
+    Scaffold(
+        modifier = modifier,
+        containerColor = MaterialTheme.colorScheme.background,
+        snackbarHost = {
+            // 修改点4：确保 Snackbar 使用 Material3 默认样式，背景不为黑色
+            SnackbarHost(snackbarHostState) { data ->
+                Snackbar(
+                    snackbarData = data,
+                    containerColor = MaterialTheme.colorScheme.inverseSurface,
+                    contentColor = MaterialTheme.colorScheme.inverseOnSurface,
+                    actionColor = MaterialTheme.colorScheme.inversePrimary
+                )
+            }
+        },
+        bottomBar = {
+            HeartCareBottomBar(
+                currentPageIndex = pagerState.currentPage,
+                onTabClick = { idx -> scope.launch { pagerState.animateScrollToPage(idx) } },
+                onPlusClick = { showAddSheet = true }
+            )
+        }
+    ) { inner ->
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.fillMaxSize().padding(inner)
+        ) { page ->
+            AnimatedContent(
+                targetState = pages[page],
+                transitionSpec = { fadeIn(tween(200)) togetherWith fadeOut(tween(200)) },
+                label = "tab"
+            ) { tab ->
+                when (tab) {
+                    MainTab.Home -> HomeScreen(
+                        onRecordIntakeOutput = { intake -> sub = SubScreen.IntakeOutput(intake) },
+                        onRecordVitalSigns = { sub = SubScreen.VitalSigns }
+                    )
+                    MainTab.History -> HistoryScreen(
+                        onOpenCompliance = { sub = SubScreen.ComplianceReport }
+                    )
+                    MainTab.Medication -> MedicationScreen()
+                    MainTab.Settings -> SettingsScreen()
+                }
+            }
+        }
+    }
+
+    if (showAddSheet) {
+        AddBottomSheet(
+            showIntakeOutput = ioEnabled,
+            onDismiss = { showAddSheet = false },
+            onIntakeOutput = {
+                showAddSheet = false
+                sub = SubScreen.IntakeOutput(intake = true)
+            },
+            onVitalSigns = {
+                showAddSheet = false
+                sub = SubScreen.VitalSigns
+            }
+        )
+    }
+
+    // 全屏子页面 —— 300ms 从右滑入，从右滑出
+    AnimatedContent(
+        targetState = sub,
+        transitionSpec = {
+            if (targetState is SubScreen.None) {
+                fadeIn(tween(200)) togetherWith
+                    (slideOutHorizontally(tween(300)) { it } + fadeOut(tween(200)))
+            } else {
+                (slideInHorizontally(tween(300)) { it } + fadeIn(tween(200))) togetherWith
+                    fadeOut(tween(200))
+            }
+        },
+        label = "sub"
+    ) { s ->
+        when (s) {
+            is SubScreen.IntakeOutput -> IntakeOutputScreen(
+                startWithIntake = s.intake,
+                onClose = { sub = SubScreen.None }
+            )
+            SubScreen.VitalSigns -> VitalSignsScreen(onClose = { sub = SubScreen.None })
+            SubScreen.ComplianceReport -> ComplianceReportScreen(onClose = { sub = SubScreen.None })
+            SubScreen.None -> {}
+        }
+    }
+}
+
+/** 4 个真实 Tab */
+enum class MainTab(val title: String, val icon: ImageVector) {
+    Home("首页", Icons.Filled.Home),
+    History("历史记录", Icons.Filled.BarChart),
+    Medication("用药管理", Icons.Filled.Medication),
+    Settings("设置", Icons.Filled.Settings)
+}
+
+/** 顶层子页面 */
+sealed interface SubScreen {
+    data object None : SubScreen
+    data class IntakeOutput(val intake: Boolean) : SubScreen
+    data object VitalSigns : SubScreen
+    data object ComplianceReport : SubScreen
+}
+
+/** 5 段底部导航：首页 / 历史 / [+大加号] / 用药 / 设置 */
+@Composable
+private fun HeartCareBottomBar(
+    currentPageIndex: Int,
+    onTabClick: (Int) -> Unit,
+    onPlusClick: () -> Unit
+) {
+    Surface(tonalElevation = 4.dp, color = MaterialTheme.colorScheme.surface) {
+        Row(
+            modifier = Modifier.fillMaxWidth().heightIn(min = 72.dp).padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            BottomTabItem("首页", Icons.Filled.Home, currentPageIndex == 0, Modifier.weight(1f)) {
+                onTabClick(0)
+            }
+            BottomTabItem("历史记录", Icons.Filled.BarChart, currentPageIndex == 1, Modifier.weight(1f)) {
+                onTabClick(1)
+            }
+            Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                Box(
+                    modifier = Modifier
+                        .size(64.dp)
+                        .background(PrimaryBlue, CircleShape)
+                        .clickable { onPlusClick() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Filled.Add, contentDescription = "新增",
+                        tint = Color.White, modifier = Modifier.size(36.dp))
+                }
+            }
+            BottomTabItem("用药管理", Icons.Filled.Medication, currentPageIndex == 2, Modifier.weight(1f)) {
+                onTabClick(2)
+            }
+            BottomTabItem("设置", Icons.Filled.Settings, currentPageIndex == 3, Modifier.weight(1f)) {
+                onTabClick(3)
+            }
+        }
+    }
+}
+
+@Composable
+private fun BottomTabItem(
+    label: String,
+    icon: ImageVector,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    val color = if (selected) PrimaryBlue else HintGray
+    Column(
+        modifier = modifier.heightIn(min = 56.dp).clickable { onClick() },
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Icon(icon, contentDescription = label, tint = color, modifier = Modifier.size(28.dp))
+        Spacer(Modifier.height(2.dp))
+        Text(label, fontSize = 14.sp, color = color, textAlign = TextAlign.Center)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AddBottomSheet(
+    showIntakeOutput: Boolean,
+    onDismiss: () -> Unit,
+    onIntakeOutput: () -> Unit,
+    onVitalSigns: () -> Unit
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+            Text("快速记录", style = MaterialTheme.typography.headlineMedium)
+            Spacer(Modifier.height(16.dp))
+            if (showIntakeOutput) {
+                ListItem(
+                    headlineContent = { Text("记录出入量", style = MaterialTheme.typography.titleLarge) },
+                    supportingContent = { Text("摄入 / 排出", style = MaterialTheme.typography.bodyLarge) },
+                    leadingContent = { Icon(Icons.Filled.WaterDrop, null, tint = PrimaryBlue) },
+                    modifier = Modifier.heightIn(min = 64.dp).clickable { onIntakeOutput() }
+                )
+                HorizontalDivider()
+            }
+            ListItem(
+                headlineContent = { Text("记录体征", style = MaterialTheme.typography.titleLarge) },
+                supportingContent = { Text("血压 / 心率 / 体重 / 血糖", style = MaterialTheme.typography.bodyLarge) },
+                leadingContent = { Icon(Icons.Filled.Favorite, null, tint = PrimaryBlue) },
+                modifier = Modifier.heightIn(min = 64.dp).clickable { onVitalSigns() }
+            )
+            Spacer(Modifier.height(24.dp))
+        }
+    }
+}
