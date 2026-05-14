@@ -4,6 +4,10 @@
 
     <!-- 震动 -->
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- 修改点1：Android 9 及以下导出 CSV 到 Download 目录需要 -->
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
     <!-- 闹钟 / 精确闹钟（API 31+） -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
@@ -16,20 +20,20 @@
     <!-- TTS（不需要额外权限，但声明）-->
 
     <application
-        android:name=".HeartCareApp"
+        android:name=".HealthLogApp"
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:label="@string/app_name"
         android:supportsRtl="true"
-        android:theme="@style/Theme.HeartCare"
+        android:theme="@style/Theme.HealthLog"
         tools:targetApi="31">
 
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTask"
-            android:theme="@style/Theme.HeartCare">
+            android:theme="@style/Theme.HealthLog">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -39,9 +43,33 @@
         <activity
             android:name=".ui.medication.MedicationReminderActivity"
             android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTop"
             android:showOnLockScreen="true"
             android:turnScreenOn="true"
-            android:theme="@style/Theme.HeartCare.Reminder" />
+            android:theme="@style/Theme.HealthLog.Reminder" />
+
+        <!-- 修改点2：用药提醒广播接收器（由 AlarmManager 唤起） -->
+        <receiver
+            android:name=".receiver.MedicationAlarmReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.rooftop.healthlog.MEDICATION_ALARM" />
+            </intent-filter>
+        </receiver>
+
+        <!-- 修改点2：开机后重新注册所有用药闹钟 -->
+        <receiver
+            android:name=".receiver.BootCompletedReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
 
         <provider
             android:name="androidx.core.content.FileProvider"

@@ -5,11 +5,11 @@ plugins {
 }
 
 android {
-    namespace = "com.example.heartcare"
+    namespace = "com.rooftop.healthlog"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.example.heartcare"
+        applicationId = "com.rooftop.healthlog"
         minSdk = 28
         targetSdk = 34
         versionCode = 1

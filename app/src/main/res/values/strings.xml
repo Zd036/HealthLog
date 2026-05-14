@@ -1,3 +1,4 @@
 <resources>
-    <string name="app_name">心衰助手</string>
+    <!-- 修改点1：应用名从"心衰助手"改为"健康记录" -->
+    <string name="app_name">健康记录</string>
 </resources>
