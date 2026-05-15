@@ -32,6 +32,7 @@ import com.rooftop.healthlog.data.local.entity.MedicationRecord
 import com.rooftop.healthlog.ui.components.UiFeedbackBus
 import com.rooftop.healthlog.ui.theme.HealthLogTheme
 import com.rooftop.healthlog.ui.theme.SuccessGreen
+import com.rooftop.healthlog.utils.MEDICATION_STATUS_TAKEN
 import com.rooftop.healthlog.worker.MedicationReminderScheduler
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -49,6 +50,7 @@ class MedicationReminderActivity : ComponentActivity() {
     companion object {
         const val EXTRA_SCHEDULE_ID = "scheduleId"
         const val EXTRA_TIME = "time"
+        const val EXTRA_SCHEDULED_AT = "scheduledAt"
     }
 
     private var ringtone: android.media.Ringtone? = null
@@ -72,6 +74,7 @@ class MedicationReminderActivity : ComponentActivity() {
 
         val scheduleId = intent.getLongExtra(EXTRA_SCHEDULE_ID, -1L)
         val time = intent.getStringExtra(EXTRA_TIME) ?: "00:00"
+        val scheduledAt = intent.getLongExtra(EXTRA_SCHEDULED_AT, scheduleTimeMillis(time))
         if (scheduleId == -1L) { finish(); return }
 
         startRingAndVibrate()
@@ -81,9 +84,15 @@ class MedicationReminderActivity : ComponentActivity() {
                 ReminderContent(
                     scheduleId = scheduleId,
                     time = time,
+                    onEmpty = {
+                        lifecycleScope.launch {
+                            stopRingAndVibrate()
+                            finish()
+                        }
+                    },
                     onTaken = { meds ->
                         lifecycleScope.launch {
-                            val inserted = recordTaken(scheduleId, time, meds)
+                            val inserted = recordTaken(scheduleId, scheduledAt, meds)
                             if (!inserted) {
                                 stopRingAndVibrate()
                                 finish()
@@ -134,10 +143,9 @@ class MedicationReminderActivity : ComponentActivity() {
     }
 
     /** 修改点2：全屏提醒确认服药也按时间点防重复，不再处理库存字段。 */
-    private suspend fun recordTaken(scheduleId: Long, time: String, meds: List<Medication>): Boolean {
+    private suspend fun recordTaken(scheduleId: Long, scheduledAt: Long, meds: List<Medication>): Boolean {
         val app = applicationContext as HealthLogApp
         val now = System.currentTimeMillis()
-        val scheduledMillis = scheduleTimeMillis(time)
         val records = meds.map { m ->
             MedicationRecord(
                 scheduleId = scheduleId,
@@ -145,22 +153,21 @@ class MedicationReminderActivity : ComponentActivity() {
                 medicationName = m.name,
                 dosage = m.dosage,
                 unit = m.unit,
-                scheduledTime = scheduledMillis,
+                scheduledTime = scheduledAt,
                 actualTime = now,
-                status = "taken"
+                status = MEDICATION_STATUS_TAKEN
             )
         }
         val inserted = app.medicationRepository.insertRecordsIfNotRecorded(
             scheduleId = scheduleId,
-            scheduledTime = scheduledMillis,
+            scheduledTime = scheduledAt,
             records = records
         )
         if (!inserted) {
             UiFeedbackBus.show("该时间点药品已标记，不可重复操作")
             return false
         }
-        MedicationReminderScheduler.cancelAutoMissed(app, scheduleId)
-        MedicationReminderScheduler.scheduleNextDay(app, scheduleId, time)
+        MedicationReminderScheduler.rescheduleAll(app)
         return inserted
     }
 
@@ -191,11 +198,16 @@ private fun scheduleTimeMillis(time: String): Long {
 private fun ReminderContent(
     scheduleId: Long,
     time: String,
+    onEmpty: () -> Unit,
     onTaken: (List<Medication>) -> Unit
 ) {
     var meds by remember { mutableStateOf<List<Medication>>(emptyList()) }
     LaunchedEffect(scheduleId) {
         meds = HealthLogApp.instance.medicationRepository.getMedicationsForScheduleSync(scheduleId)
+        if (meds.isEmpty()) {
+            MedicationReminderScheduler.rescheduleAll(HealthLogApp.instance)
+            onEmpty()
+        }
     }
     Box(
         modifier = Modifier
@@ -228,32 +240,23 @@ private fun ReminderContent(
                         Icon(Icons.Filled.Medication, null,
                             tint = MaterialTheme.colorScheme.primary)
                         Spacer(Modifier.width(8.dp))
-                        Text("请服用以下药品",
+                        Text("请按时服药",
                             style = MaterialTheme.typography.titleLarge)
                     }
-                    if (meds.isEmpty()) {
-                        Text("（暂无药品）", style = MaterialTheme.typography.bodyLarge)
-                    } else {
-                        for (m in meds) {
-                            val dosage = if (m.dosage == m.dosage.toInt().toFloat())
-                                m.dosage.toInt().toString() else "%.1f".format(m.dosage)
-                            val spec = if (m.specification > 0)
-                                "（${"%.0f".format(m.specification)}mg/${m.unit}）" else ""
-                            Text("• ${m.name}：$dosage${m.unit}$spec",
-                                style = MaterialTheme.typography.titleLarge)
-                        }
-                        val methods = meds.mapNotNull {
-                            it.method.takeIf { s -> s.isNotBlank() }
-                        }.distinct()
-                        if (methods.isNotEmpty()) {
-                            Text("服用方式：${methods.joinToString("、")}",
-                                style = MaterialTheme.typography.bodyLarge)
-                        }
-                    }
+                    Text(
+                        "服用完成后，直接点击下方“已服用”。",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Text(
+                        "不再显示完整药品清单，减少翻动和等待。",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = Color(0xFF666666)
+                    )
                 }
             }
             Button(
                 onClick = { onTaken(meds) },
+                enabled = meds.isNotEmpty(),
                 modifier = Modifier.fillMaxWidth().height(56.dp),
                 shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = SuccessGreen)

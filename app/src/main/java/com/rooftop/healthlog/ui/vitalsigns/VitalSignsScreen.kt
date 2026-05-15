@@ -17,7 +17,6 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rooftop.healthlog.ui.appViewModel
-import com.rooftop.healthlog.ui.components.ConfirmDialog
 import com.rooftop.healthlog.ui.components.PrimaryBigButton
 import com.rooftop.healthlog.ui.components.UiFeedbackBus
 import com.rooftop.healthlog.ui.theme.DangerRed
@@ -28,9 +27,8 @@ import com.rooftop.healthlog.ui.theme.PrimaryBlue
 fun VitalSignsScreen(onClose: () -> Unit) {
     val vm: VitalSignsViewModel = appViewModel()
     val state by vm.state.collectAsStateWithLifecycle()
-    var showConfirm by remember { mutableStateOf(false) }
-    var emptyFields by remember { mutableStateOf(listOf<String>()) }
-    var abnormalSugar by remember { mutableStateOf<Float?>(null) }
+    var validationMessage by remember { mutableStateOf<String?>(null) }
+    var abnormalAlertMessage by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
         vm.clearInputFields()
@@ -62,9 +60,9 @@ fun VitalSignsScreen(onClose: () -> Unit) {
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     BigField("体重 ⚖\uFE0F (斤)", state.weight, vm::setWeight, "请输入体重", KeyboardType.Decimal)
-                    BigField("收缩压 \uD83E\uDE78 (mmHg)", state.systolic, vm::setSys, "请输入收缩压", KeyboardType.Number)
-                    BigField("舒张压 \uD83E\uDE78 (mmHg)", state.diastolic, vm::setDia, "请输入舒张压", KeyboardType.Number)
-                    BigField("心率 \uD83E\uDE7A (次/分)", state.heartRate, vm::setHr, "请输入心率", KeyboardType.Number)
+                    BigField("高压 \uD83E\uDE78 (mmHg)", state.systolic, vm::setSys, "请输入高压", KeyboardType.Number)
+                    BigField("低压 \uD83E\uDE78 (mmHg)", state.diastolic, vm::setDia, "请输入低压", KeyboardType.Number)
+                    BigField("脉率 \uD83E\uDE7A (次/分)", state.heartRate, vm::setHr, "请输入脉率", KeyboardType.Number)
                     BigField("血糖 \uD83D\uDC89 (mmol/L)", state.bloodSugar, vm::setSugar, "请输入血糖", KeyboardType.Decimal)
                     OutlinedTextField(
                         value = state.note,
@@ -78,16 +76,13 @@ fun VitalSignsScreen(onClose: () -> Unit) {
                 Surface(shadowElevation = 8.dp) {
                     Box(Modifier.padding(16.dp)) {
                         PrimaryBigButton("保存", onClick = {
-                            val empties = vm.emptyFieldNames()
                             if (vm.isAllEmpty()) {
-                                emptyFields = empties
-                                showConfirm = true
-                            } else if (empties.isNotEmpty()) {
-                                emptyFields = empties
-                                showConfirm = true
+                                validationMessage = "请至少填写一项体征数据。"
+                            } else if (vm.bloodPressurePairMessage() != null) {
+                                validationMessage = vm.bloodPressurePairMessage()
                             } else {
-                                saveAndHandle(vm) { bad ->
-                                    if (bad != null) abnormalSugar = bad
+                                saveAndHandle(vm) { alerts ->
+                                    if (alerts.isNotEmpty()) abnormalAlertMessage = alerts.joinToString("\n")
                                     else { UiFeedbackBus.show("已保存体征记录"); onClose() }
                                 }
                             }
@@ -98,43 +93,49 @@ fun VitalSignsScreen(onClose: () -> Unit) {
         }
     }
 
-    if (showConfirm) {
-        ConfirmDialog(
-            title = "未填项提示",
-            message = if (vm.isAllEmpty()) "请至少填写一项体征数据。"
-                      else "您未填写 ${emptyFields.joinToString("、")}，是否继续保存？",
-            confirmText = if (vm.isAllEmpty()) "知道了" else "继续保存",
-            dismissText = if (vm.isAllEmpty()) "取消" else "去填写",
-            onConfirm = {
-                showConfirm = false
-                if (!vm.isAllEmpty()) saveAndHandle(vm) { bad ->
-                    if (bad != null) abnormalSugar = bad
-                    else { UiFeedbackBus.show("已保存体征记录"); onClose() }
-                }
-            },
-            onDismiss = { showConfirm = false }
-        )
-    }
-
-    // 血糖异常弹窗：不可自动消失
-    abnormalSugar?.let { sugar ->
+    validationMessage?.let { message ->
         AlertDialog(
-            onDismissRequest = {},
+            onDismissRequest = { validationMessage = null },
             title = {
                 Text(
-                    "⚠️ 血糖异常提醒",
-                    style = MaterialTheme.typography.titleLarge.copy(color = DangerRed)
+                    "提示",
+                    style = MaterialTheme.typography.titleLarge
                 )
             },
             text = {
                 Text(
-                    "您的血糖值为 ${"%.1f".format(sugar)} mmol/L，超出正常范围（3.9 - 11.1 mmol/L），请及时就医检查。",
+                    message,
                     style = MaterialTheme.typography.bodyLarge
                 )
             },
             confirmButton = {
                 TextButton(onClick = {
-                    abnormalSugar = null
+                    validationMessage = null
+                }) {
+                    Text("知道了", style = MaterialTheme.typography.titleLarge)
+                }
+            }
+        )
+    }
+
+    abnormalAlertMessage?.let { message ->
+        AlertDialog(
+            onDismissRequest = {},
+            title = {
+                Text(
+                    "⚠️ 体征异常提醒",
+                    style = MaterialTheme.typography.titleLarge.copy(color = DangerRed)
+                )
+            },
+            text = {
+                Text(
+                    message,
+                    style = MaterialTheme.typography.bodyLarge
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    abnormalAlertMessage = null
                     UiFeedbackBus.show("已保存体征记录")
                     onClose()
                 }) {
@@ -146,8 +147,8 @@ fun VitalSignsScreen(onClose: () -> Unit) {
 }
 
 /** 触发 VM 保存并把结果回传 */
-private fun saveAndHandle(vm: VitalSignsViewModel, onDone: (Float?) -> Unit) {
-    vm.save { abnormal -> onDone(abnormal) }
+private fun saveAndHandle(vm: VitalSignsViewModel, onDone: (List<String>) -> Unit) {
+    vm.save { alerts -> onDone(alerts) }
 }
 
 @Composable

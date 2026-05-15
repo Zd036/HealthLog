@@ -12,6 +12,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import com.rooftop.healthlog.ui.history.MedicationHistoryItem
 import com.rooftop.healthlog.ui.theme.*
+import com.rooftop.healthlog.utils.MEDICATION_STATUS_TAKEN
 
 /** 服药依从率柱状图（每日按时率 0~1） */
 @Composable
@@ -22,7 +23,7 @@ fun MedicationComplianceChart(records: List<MedicationHistoryItem>, days: Int) {
         val end = ds + oneDay
         val todays = records.filter { it.scheduledTime in ds until end }
         if (todays.isEmpty()) null
-        else todays.count { it.status == "taken" } / todays.size.toFloat()
+        else todays.count { it.status == MEDICATION_STATUS_TAKEN } / todays.size.toFloat()
     }
     val tm = rememberTextMeasurer()
     val labelStyle = MaterialTheme.typography.labelMedium.copy(color = HintGray)

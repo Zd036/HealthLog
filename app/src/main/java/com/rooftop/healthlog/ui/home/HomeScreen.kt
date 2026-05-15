@@ -69,7 +69,8 @@ fun HomeScreen(
                         stoolCount = state.stoolCount,
                         hasIntakeOutput = state.hasIntakeOutput,
                         showIntakeOutput = settings.enableIntakeOutput,
-                        latestVital = state.latestVital,
+                        recentVitals = state.recentVitals,
+                        alerts = state.alerts,
                         medications = meds
                     )
                     UiFeedbackBus.show("请选择分享方式")
@@ -92,8 +93,7 @@ fun HomeScreen(
             )
         }
         VitalSignsCard(
-            latest = state.latestVital,
-            yesterdayWeight = state.yesterdayWeight,
+            recentVitals = state.recentVitals,
             onRecord = onRecordVitalSigns
         )
         MedicationCard(

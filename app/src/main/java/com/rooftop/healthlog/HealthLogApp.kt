@@ -5,6 +5,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.os.Build
+import com.rooftop.healthlog.receiver.MedicationAlarmReceiver
 import androidx.work.Configuration
 import com.rooftop.healthlog.data.local.AppDatabase
 import com.rooftop.healthlog.data.repository.IntakeOutputRepository
@@ -59,20 +60,22 @@ class HealthLogApp : Application(), Configuration.Provider {
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            nm.deleteNotificationChannel(LEGACY_CHANNEL_REMINDER)
             val ch = NotificationChannel(
-                CHANNEL_REMINDER,
-                "用药提醒",
+                MedicationAlarmReceiver.CHANNEL_ID,
+                "服药提醒",
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
-                description = "用药时间提醒"
+                description = "按时服药提醒（高优先级，支持锁屏与全屏）"
                 enableVibration(true)
+                vibrationPattern = longArrayOf(0, 500, 500, 500)
             }
             nm.createNotificationChannel(ch)
         }
     }
 
     companion object {
-        const val CHANNEL_REMINDER = "medication_reminder"
+        private const val LEGACY_CHANNEL_REMINDER = "medication_reminder"
         lateinit var instance: HealthLogApp
             private set
     }

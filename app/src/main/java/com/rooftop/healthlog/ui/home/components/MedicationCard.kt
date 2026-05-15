@@ -19,6 +19,9 @@ import com.rooftop.healthlog.ui.theme.DangerRed
 import com.rooftop.healthlog.ui.theme.HintGray
 import com.rooftop.healthlog.ui.theme.PrimaryBlue
 import com.rooftop.healthlog.ui.theme.SuccessGreen
+import com.rooftop.healthlog.utils.MEDICATION_STATUS_MISSED
+import com.rooftop.healthlog.utils.MEDICATION_STATUS_TAKEN
+import com.rooftop.healthlog.utils.medicationStatusLabel
 
 /** 今日用药卡片：修改点2 后，已服用和已漏服时间点都不可重复点击。 */
 @Composable
@@ -122,8 +125,8 @@ private fun timeLabel(time: String): String {
 private fun scheduleSummary(p: PendingSchedule): String {
     val base = when (p.status) {
         MedicationSlotStatus.PENDING -> "待处理"
-        MedicationSlotStatus.TAKEN -> "已完成"
-        MedicationSlotStatus.MISSED -> "已漏服"
+        MedicationSlotStatus.TAKEN -> medicationStatusLabel(MEDICATION_STATUS_TAKEN)
+        MedicationSlotStatus.MISSED -> medicationStatusLabel(MEDICATION_STATUS_MISSED)
     }
     return "$base · ${p.medications.joinToString("、") { it.name }}"
 }

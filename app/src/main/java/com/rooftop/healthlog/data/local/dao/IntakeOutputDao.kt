@@ -20,8 +20,24 @@ interface IntakeOutputDao {
     @Query("SELECT * FROM intake_output_records WHERE time BETWEEN :startTime AND :endTime ORDER BY time DESC")
     fun getBetween(startTime: Long, endTime: Long): Flow<List<IntakeOutputRecord>>
 
+    /** 历史页仅显示最近 500 条，避免全量加载影响滚动性能。 */
     @Query("SELECT * FROM intake_output_records ORDER BY time DESC LIMIT 500")
-    fun getAll(): Flow<List<IntakeOutputRecord>>
+    fun getRecentRecords(): Flow<List<IntakeOutputRecord>>
+
+    /** 导出时仍使用全量数据，不能受历史页 500 条限制影响。 */
+    @Query("SELECT * FROM intake_output_records ORDER BY time DESC")
+    fun getAllRecords(): Flow<List<IntakeOutputRecord>>
+
+    /** 历史页用于判断是否需要显示“仅展示最近 500 条”的提示。 */
+    @Query("SELECT COUNT(*) FROM intake_output_records")
+    fun countAllRecords(): Flow<Int>
+
+    /** 导入时按“时间 + 类型 + 类别 + 数值”判断重复。 */
+    @Query(
+        "SELECT COUNT(*) FROM intake_output_records " +
+            "WHERE time = :time AND type = :type AND category = :category AND amount = :amount"
+    )
+    suspend fun countDuplicate(time: Long, type: String, category: String, amount: Float): Int
 
     // 自定义类型
     @Insert

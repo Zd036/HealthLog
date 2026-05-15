@@ -24,8 +24,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rooftop.healthlog.ui.theme.PrimaryBlue
 import com.rooftop.healthlog.ui.theme.HintGray
@@ -38,15 +36,12 @@ import com.rooftop.healthlog.ui.intakeoutput.IntakeOutputScreen
 import com.rooftop.healthlog.ui.vitalsigns.VitalSignsScreen
 import com.rooftop.healthlog.ui.compliance.ComplianceReportScreen
 import com.rooftop.healthlog.ui.components.UiFeedbackBus
-import kotlinx.coroutines.launch
 
-/** 主脚手架：4 个可滑动页 + 中间大加号 + 顶层全屏子页面 */
-@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+/** 主脚手架：4 个 Tab 页 + 中间大加号 + 顶层全屏子页面 */
 @Composable
 fun MainScaffold(modifier: Modifier = Modifier) {
     val pages = listOf(MainTab.Home, MainTab.History, MainTab.Medication, MainTab.Settings)
-    val pagerState = rememberPagerState(pageCount = { pages.size })
-    val scope = rememberCoroutineScope()
+    var currentPageIndex by rememberSaveable { mutableIntStateOf(0) }
 
     val settingsVm: SettingsViewModel = appViewModel()
     val settings by settingsVm.settings.collectAsStateWithLifecycle()
@@ -91,18 +86,19 @@ fun MainScaffold(modifier: Modifier = Modifier) {
         },
         bottomBar = {
             HealthLogBottomBar(
-                currentPageIndex = pagerState.currentPage,
-                onTabClick = { idx -> scope.launch { pagerState.animateScrollToPage(idx) } },
+                currentPageIndex = currentPageIndex,
+                onTabClick = { idx -> currentPageIndex = idx },
                 onPlusClick = { showAddSheet = true }
             )
         }
     ) { inner ->
-        HorizontalPager(
-            state = pagerState,
-            modifier = Modifier.fillMaxSize().padding(inner)
-        ) { page ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(inner)
+        ) {
             AnimatedContent(
-                targetState = pages[page],
+                targetState = pages[currentPageIndex],
                 transitionSpec = { fadeIn(tween(200)) togetherWith fadeOut(tween(200)) },
                 label = "tab"
             ) { tab ->
@@ -261,7 +257,7 @@ private fun AddBottomSheet(
             }
             ListItem(
                 headlineContent = { Text("记录体征", style = MaterialTheme.typography.titleLarge) },
-                supportingContent = { Text("体重 / 血压 / 心率 / 血糖", style = MaterialTheme.typography.bodyLarge) },
+                supportingContent = { Text("体重 / 血压 / 脉率 / 血糖", style = MaterialTheme.typography.bodyLarge) },
                 leadingContent = { Icon(Icons.Filled.Favorite, null, tint = PrimaryBlue) },
                 modifier = Modifier.heightIn(min = 64.dp).clickable { onVitalSigns() }
             )

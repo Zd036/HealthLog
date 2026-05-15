@@ -13,17 +13,34 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import com.rooftop.healthlog.data.local.entity.VitalSignsRecord
 import com.rooftop.healthlog.ui.theme.*
+import com.rooftop.healthlog.utils.isBloodSugarAbnormal
+import com.rooftop.healthlog.utils.isDiastolicAbnormal
+import com.rooftop.healthlog.utils.isHeartRateAbnormal
+import com.rooftop.healthlog.utils.isRapidWeightGain
+import com.rooftop.healthlog.utils.isSystolicAbnormal
+import com.rooftop.healthlog.utils.previousWeightRecordWithin24Hours
+import com.rooftop.healthlog.utils.weightGainDelta
 
 @Composable
 fun WeightChart(records: List<VitalSignsRecord>, days: Int) {
-    // 体重异常：24 小时内增加 ≥ 2 斤（对上一天的 diff）
     val dayStarts = remember(days) { dayStartsForRange(days) }
-    val vals = remember(records, dayStarts) {
-        bucketDaily(records, { it.time }, { it.weight }, dayStarts)
+    val dailyRecords = remember(records, dayStarts) {
+        dayStarts.map { dayStart ->
+            records
+                .filter { it.weight != null && it.time in dayStart until (dayStart + 24L * 3600_000L) }
+                .maxByOrNull { it.time }
+        }
     }
-    val highlights = vals.mapIndexed { i, v ->
-        val prev = vals.getOrNull(i - 1)
-        if (v != null && prev != null && v - prev >= 2f) DangerRed else null
+    val vals = dailyRecords.map { it?.weight }
+    val highlights = remember(records, dailyRecords) {
+        dailyRecords.map { current ->
+            val prev = current?.let { previousWeightRecordWithin24Hours(records, it.time) }
+            if (current != null && isRapidWeightGain(weightGainDelta(current.weight, prev?.weight))) {
+                DangerRed
+            } else {
+                null
+            }
+        }
     }
     val nonNull = vals.filterNotNull()
     val yMin = (nonNull.minOrNull() ?: 100f) - 5f
@@ -41,11 +58,11 @@ fun WeightChart(records: List<VitalSignsRecord>, days: Int) {
                 lineColor = Color(0xFF9C27B0), normalDotColor = Color(0xFF9C27B0))
         }
         Spacer(Modifier.height(6.dp))
-        Legend(listOf(Color(0xFF9C27B0) to "体重", DangerRed to "24小时增加≥2斤"))
+        Legend(listOf(Color(0xFF9C27B0) to "体重", DangerRed to "24小时增加>=1斤"))
     }
 }
 
-/** 血压趋势图：双线（收缩压蓝、舒张压绿），异常值红色高亮 */
+/** 血压趋势图：双线（高压蓝、低压绿），异常值红色高亮 */
 @Composable
 fun BloodPressureChart(records: List<VitalSignsRecord>, days: Int) {
     val dayStarts = remember(days) { dayStartsForRange(days) }
@@ -55,8 +72,8 @@ fun BloodPressureChart(records: List<VitalSignsRecord>, days: Int) {
     val dia = remember(records, dayStarts) {
         bucketDaily(records, { it.time }, { it.diastolic?.toFloat() }, dayStarts)
     }
-    val sysHl = sys.map { v -> v?.let { if (it > 140 || it < 90) DangerRed else null } }
-    val diaHl = dia.map { v -> v?.let { if (it > 90 || it < 60) DangerRed else null } }
+    val sysHl = sys.map { v -> v?.let { if (isSystolicAbnormal(it.toInt())) DangerRed else null } }
+    val diaHl = dia.map { v -> v?.let { if (isDiastolicAbnormal(it.toInt())) DangerRed else null } }
 
     val all = (sys + dia).filterNotNull()
     val yMin = (all.minOrNull() ?: 60f).coerceAtMost(60f) - 10f
@@ -78,17 +95,17 @@ fun BloodPressureChart(records: List<VitalSignsRecord>, days: Int) {
                 lineColor = SuccessGreen, normalDotColor = SuccessGreen)
         }
         Spacer(Modifier.height(6.dp))
-        Legend(listOf(PrimaryBlue to "收缩压", SuccessGreen to "舒张压", DangerRed to "异常"))
+        Legend(listOf(PrimaryBlue to "高压", SuccessGreen to "低压", DangerRed to "异常"))
     }
 }
 
 @Composable
 fun HeartRateChart(records: List<VitalSignsRecord>, days: Int) {
     SingleMetricChart(
-        title = "心率趋势（次/分）",
+        title = "脉率趋势（次/分）",
         records = records, days = days,
         selector = { it.heartRate?.toFloat() },
-        abnormal = { v -> v > 100f || v < 60f },
+        abnormal = { v -> isHeartRateAbnormal(v.toInt()) },
         lineColor = WarningYellow,
         defaultMin = 50f, defaultMax = 110f
     )
@@ -100,7 +117,7 @@ fun BloodSugarChart(records: List<VitalSignsRecord>, days: Int) {
         title = "血糖趋势（mmol/L）",
         records = records, days = days,
         selector = { it.bloodSugar },
-        abnormal = { v -> v > 11.1f || v < 3.9f },
+        abnormal = ::isBloodSugarAbnormal,
         lineColor = Color(0xFF00BCD4),
         defaultMin = 3f, defaultMax = 12f,
         yFormat = { "%.1f".format(it) }

@@ -12,6 +12,12 @@ import androidx.compose.ui.unit.dp
 import com.rooftop.healthlog.data.local.entity.VitalSignsRecord
 import com.rooftop.healthlog.ui.theme.*
 import com.rooftop.healthlog.utils.DateUtils
+import com.rooftop.healthlog.utils.isBloodPressureAbnormal
+import com.rooftop.healthlog.utils.isBloodSugarAbnormal
+import com.rooftop.healthlog.utils.isHeartRateAbnormal
+import com.rooftop.healthlog.utils.isRapidWeightGain
+import com.rooftop.healthlog.utils.previousWeightRecordWithin24Hours
+import com.rooftop.healthlog.utils.weightGainDelta
 
 fun LazyListScope.vitalSignsList(records: List<VitalSignsRecord>) {
     if (records.isEmpty()) {
@@ -33,18 +39,11 @@ private fun VitalSignsItem(
     all: List<VitalSignsRecord>,
     selfIndex: Int
 ) {
-    val bpAbnormal = (v.systolic != null && (v.systolic > 140 || v.systolic < 90)) ||
-            (v.diastolic != null && (v.diastolic > 90 || v.diastolic < 60))
-    val hrAbnormal = v.heartRate != null && (v.heartRate > 100 || v.heartRate < 60)
-    val bsAbnormal = v.bloodSugar != null && (v.bloodSugar > 11.1f || v.bloodSugar < 3.9f)
-    // 24h 内体重增加 ≥ 2 斤
-    val weightAbnormal = v.weight != null && run {
-        val day = 24L * 3600_000L
-        val prev = all.asSequence()
-            .filter { it.time < v.time && it.time >= v.time - day && it.weight != null }
-            .maxByOrNull { it.time }
-        prev != null && v.weight - prev.weight!! >= 2f
-    }
+    val bpAbnormal = isBloodPressureAbnormal(v.systolic, v.diastolic)
+    val hrAbnormal = isHeartRateAbnormal(v.heartRate)
+    val bsAbnormal = isBloodSugarAbnormal(v.bloodSugar)
+    val prevWeightRecord = previousWeightRecordWithin24Hours(all, v.time)
+    val weightAbnormal = isRapidWeightGain(weightGainDelta(v.weight, prevWeightRecord?.weight))
 
     Card(
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
@@ -62,7 +61,7 @@ private fun VitalSignsItem(
                     "体重" to (v.weight?.let { "%.1f 斤".format(it) } ?: "-") to weightAbnormal,
                     "血压" to ((v.systolic?.toString() ?: "-") + "/" +
                             (v.diastolic?.toString() ?: "-") + " mmHg") to bpAbnormal,
-                    "心率" to ((v.heartRate?.toString() ?: "-") + " 次/分") to hrAbnormal,
+                    "脉率" to ((v.heartRate?.toString() ?: "-") + " 次/分") to hrAbnormal,
                     "血糖" to (v.bloodSugar?.let { "%.1f mmol/L".format(it) } ?: "-") to bsAbnormal
                 )
             )

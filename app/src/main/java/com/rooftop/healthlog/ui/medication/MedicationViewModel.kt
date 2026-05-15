@@ -58,13 +58,14 @@ class MedicationViewModel(private val app: HealthLogApp) : AndroidViewModel(app)
     fun upsertMedication(m: Medication) {
         viewModelScope.launch {
             if (m.id == 0L) repo.insertMedication(m) else repo.updateMedication(m)
+            MedicationReminderScheduler.rescheduleAll(app)
         }
     }
 
     fun deleteMedication(m: Medication) {
-        viewModelScope.launch { repo.deleteMedication(m) }
+        viewModelScope.launch {
+            repo.deleteMedication(m)
+            MedicationReminderScheduler.rescheduleAll(app)
+        }
     }
-
-    suspend fun getMedicationsFor(scheduleId: Long): List<Medication> =
-        repo.getMedicationsForScheduleSync(scheduleId)
 }

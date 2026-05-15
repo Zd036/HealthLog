@@ -7,6 +7,8 @@ import com.rooftop.healthlog.HealthLogApp
 import com.rooftop.healthlog.data.local.entity.AppSettings
 import com.rooftop.healthlog.utils.CsvExporter
 import com.rooftop.healthlog.utils.CsvImporter
+import com.rooftop.healthlog.utils.ReminderPermissionHelper
+import com.rooftop.healthlog.utils.ReminderPermissionStatus
 import com.rooftop.healthlog.worker.MedicationReminderScheduler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -37,6 +39,11 @@ class SettingsViewModel(private val app: HealthLogApp) : AndroidViewModel(app) {
     private val _importResult = MutableStateFlow<CsvImporter.ImportResult?>(null)
     val importResult: StateFlow<CsvImporter.ImportResult?> = _importResult.asStateFlow()
 
+    private val _reminderPermissionStatus =
+        MutableStateFlow(ReminderPermissionHelper.status(app))
+    val reminderPermissionStatus: StateFlow<ReminderPermissionStatus> =
+        _reminderPermissionStatus.asStateFlow()
+
     fun setFontSize(large: Boolean) {
         viewModelScope.launch {
             app.settingsRepository.setFontSize(if (large) "large" else "normal")
@@ -55,9 +62,9 @@ class SettingsViewModel(private val app: HealthLogApp) : AndroidViewModel(app) {
             val result = runCatching {
                 withContext(Dispatchers.IO) {
                     val data = CsvExporter.ExportData(
-                        intake = app.intakeOutputRepository.all().first(),
-                        vitals = app.vitalSignsRepository.all().first(),
-                        medRecords = app.medicationRepository.allRecords().first(),
+                        intake = app.intakeOutputRepository.getAllRecordsForExport().first(),
+                        vitals = app.vitalSignsRepository.getAllRecordsForExport().first(),
+                        medRecords = app.medicationRepository.getAllRecordsForExport().first(),
                         schedules = app.medicationRepository.getAllSchedules().first(),
                         medications = app.medicationRepository.getAllMedications().first(),
                     )
@@ -74,6 +81,10 @@ class SettingsViewModel(private val app: HealthLogApp) : AndroidViewModel(app) {
     }
 
     fun consumeExportResult() { _exportResult.value = null }
+
+    fun refreshReminderPermissionStatus() {
+        _reminderPermissionStatus.value = ReminderPermissionHelper.status(app)
+    }
 
     /** 修改点1：从用户选中的 SAF Uri 导入 CSV */
     fun importFrom(uri: Uri) {

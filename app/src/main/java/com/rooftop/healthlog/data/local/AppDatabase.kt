@@ -19,7 +19,7 @@ import com.rooftop.healthlog.data.local.entity.*
         AppSettings::class,
         CustomCategory::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -110,6 +110,47 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** v4 → v5：为服药记录补上数据库级唯一约束，阻止同一时间点同一药品重复写入。 */
+        val MIGRATION_4_5: Migration = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS medication_records_new (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        scheduleId INTEGER NOT NULL,
+                        medicationId INTEGER NOT NULL,
+                        medicationName TEXT NOT NULL,
+                        dosage REAL NOT NULL,
+                        unit TEXT NOT NULL,
+                        scheduledTime INTEGER NOT NULL,
+                        actualTime INTEGER,
+                        status TEXT NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
+                    INSERT OR IGNORE INTO medication_records_new (
+                        id, scheduleId, medicationId, medicationName, dosage, unit,
+                        scheduledTime, actualTime, status
+                    )
+                    SELECT id, scheduleId, medicationId, medicationName, dosage, unit,
+                        scheduledTime, actualTime, status
+                    FROM medication_records
+                    ORDER BY id ASC
+                    """.trimIndent()
+                )
+                db.execSQL("DROP TABLE medication_records")
+                db.execSQL("ALTER TABLE medication_records_new RENAME TO medication_records")
+                db.execSQL(
+                    """
+                    CREATE UNIQUE INDEX IF NOT EXISTS index_medication_records_unique_slot
+                    ON medication_records(scheduleId, scheduledTime, medicationId, medicationName)
+                    """.trimIndent()
+                )
+            }
+        }
+
         fun getInstance(context: Context): AppDatabase =
             INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -117,7 +158,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "healthlog.db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                     .fallbackToDestructiveMigration()
                     .build()
                     .also { INSTANCE = it }

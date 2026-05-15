@@ -19,6 +19,9 @@ class MedicationRepository(
     suspend fun getMedicationsForScheduleSync(scheduleId: Long): List<Medication> =
         medDao.getMedicationsForScheduleSync(scheduleId)
 
+    suspend fun hasMedicationsForSchedule(scheduleId: Long): Boolean =
+        medDao.getMedicationsForScheduleSync(scheduleId).isNotEmpty()
+
     suspend fun getScheduleById(id: Long): MedicationSchedule? = medDao.getScheduleById(id)
 
     suspend fun insertSchedule(s: MedicationSchedule): Long = medDao.insertSchedule(s)
@@ -49,5 +52,21 @@ class MedicationRepository(
     suspend fun countRecordedTodayForSchedule(scheduleId: Long, scheduledTime: Long): Int =
         recordDao.countRecordedToday(scheduleId, scheduledTime)
 
-    fun allRecords(): Flow<List<MedicationRecord>> = recordDao.getAll()
+    /** 历史记录页仅取最近 500 条，避免全量数据拖慢列表。 */
+    fun getRecentRecordsForDisplay(): Flow<List<MedicationRecord>> = recordDao.getRecentRecords()
+
+    /** 导出功能仍需读取全量数据。 */
+    fun getAllRecordsForExport(): Flow<List<MedicationRecord>> = recordDao.getAllRecords()
+
+    /** 历史页根据总数决定是否显示“最近 500 条”提示。 */
+    fun countAllRecordEntries(): Flow<Int> = recordDao.countAllRecords()
+
+    /** 导入时按业务字段判断重复。 */
+    suspend fun countDuplicateRecord(record: MedicationRecord): Int =
+        recordDao.countDuplicate(
+            scheduleId = record.scheduleId,
+            scheduledTime = record.scheduledTime,
+            medicationId = record.medicationId,
+            status = record.status
+        )
 }

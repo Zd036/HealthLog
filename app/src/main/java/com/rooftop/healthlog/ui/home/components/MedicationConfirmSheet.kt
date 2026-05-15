@@ -10,7 +10,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rooftop.healthlog.ui.home.PendingSchedule
 import com.rooftop.healthlog.ui.theme.HintGray
-import com.rooftop.healthlog.ui.theme.PrimaryBlue
 import java.util.Calendar
 
 /** 服药确认 BottomSheet（修改点5） */
@@ -41,34 +40,15 @@ fun MedicationConfirmSheet(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
-                "${pending.schedule.time} 服药清单",
+                "${pending.schedule.time} 服药确认",
                 fontSize = 22.sp,
                 style = MaterialTheme.typography.headlineSmall
             )
 
-            // 药品列表
-            for (med in pending.medications) {
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                        Text(med.name, fontSize = 20.sp, style = MaterialTheme.typography.titleMedium)
-                        Text(
-                            "${med.dosage} ${med.unit}  · ${med.specification} mg/片  · ${med.method}",
-                            fontSize = 18.sp,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = HintGray
-                        )
-                    }
-                }
-            }
-
             // 状态提示
             when {
                 isOverdue -> Text(
-                    "已超过服药时间 3 小时，标记为漏服",
+                    "已超过服药时间 3 小时，可直接标记为漏服",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.error
                 )

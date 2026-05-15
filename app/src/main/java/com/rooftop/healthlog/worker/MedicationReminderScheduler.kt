@@ -34,34 +34,74 @@ object MedicationReminderScheduler {
         val all = app.medicationRepository.getAllSchedules().first()
         for (s in all) cancelOne(context, s.id)
         val enabled = app.medicationRepository.getEnabledSchedules().first()
-        for (s in enabled) scheduleOne(context, s.id, s.time)
+        for (s in enabled) {
+            if (!app.medicationRepository.hasMedicationsForSchedule(s.id)) continue
+            scheduleNextRelevant(context, s.id, s.time)
+        }
     }
 
-    /** 为单个时间点设置下一个闹钟（今天该时间已过则设为明天） */
-    fun scheduleOne(context: Context, scheduleId: Long, time: String) {
-        val parts = time.split(":")
-        val hour = parts.getOrNull(0)?.toIntOrNull() ?: return
-        val minute = parts.getOrNull(1)?.toIntOrNull() ?: return
-        val now = System.currentTimeMillis()
-        val next = Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, hour); set(Calendar.MINUTE, minute)
-            set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
-            if (timeInMillis <= now) add(Calendar.DAY_OF_YEAR, 1)
+    /** 为单个时间点设置下一次需要处理的轮次。 */
+    suspend fun scheduleNextRelevant(context: Context, scheduleId: Long, time: String) {
+        val app = context.applicationContext as HealthLogApp
+        if (!app.medicationRepository.hasMedicationsForSchedule(scheduleId)) {
+            cancelOne(context, scheduleId)
+            return
         }
-        scheduleOccurrence(context, scheduleId, time, next.timeInMillis)
+        val now = System.currentTimeMillis()
+        val scheduledAt = nextOccurrenceMillis(time, now)
+        val handled = app.medicationRepository.countRecordedTodayForSchedule(scheduleId, scheduledAt) > 0
+        when {
+            handled -> scheduleOccurrence(context, scheduleId, time, nextDayMillis(time, now))
+            now < scheduledAt -> scheduleOccurrence(context, scheduleId, time, scheduledAt)
+            now < scheduledAt + MISSED_DELAY_MS -> scheduleOccurrence(
+                context = context,
+                scheduleId = scheduleId,
+                time = time,
+                scheduledAt = scheduledAt,
+                reminderTriggerAt = now
+            )
+            else -> scheduleOccurrence(
+                context = context,
+                scheduleId = scheduleId,
+                time = time,
+                scheduledAt = scheduledAt,
+                scheduleReminder = false,
+                autoMissedTriggerAt = now
+            )
+        }
+    }
+
+    /** 为单个时间点设置下一个闹钟（今天该时间已过但未处理时仍补今天这一轮） */
+    fun nextOccurrenceMillis(time: String, now: Long = System.currentTimeMillis()): Long {
+        val parts = time.split(":")
+        val hour = parts.getOrNull(0)?.toIntOrNull() ?: return now
+        val minute = parts.getOrNull(1)?.toIntOrNull() ?: return now
+        return Calendar.getInstance().apply {
+            timeInMillis = now
+            set(Calendar.HOUR_OF_DAY, hour)
+            set(Calendar.MINUTE, minute)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
     }
 
     /** 服用完成后，为同一时间点的"明天"再设置一次（保证持续滚动） */
     fun scheduleNextDay(context: Context, scheduleId: Long, time: String) {
+        scheduleOccurrence(context, scheduleId, time, nextDayMillis(time))
+    }
+
+    private fun nextDayMillis(time: String, now: Long = System.currentTimeMillis()): Long {
         val parts = time.split(":")
-        val hour = parts.getOrNull(0)?.toIntOrNull() ?: return
-        val minute = parts.getOrNull(1)?.toIntOrNull() ?: return
-        val next = Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, hour); set(Calendar.MINUTE, minute)
-            set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+        val hour = parts.getOrNull(0)?.toIntOrNull() ?: return now
+        val minute = parts.getOrNull(1)?.toIntOrNull() ?: return now
+        return Calendar.getInstance().apply {
+            timeInMillis = now
+            set(Calendar.HOUR_OF_DAY, hour)
+            set(Calendar.MINUTE, minute)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
             add(Calendar.DAY_OF_YEAR, 1)
-        }
-        scheduleOccurrence(context, scheduleId, time, next.timeInMillis)
+        }.timeInMillis
     }
 
     /** 取消单个时间点的闹钟 */
@@ -75,21 +115,33 @@ object MedicationReminderScheduler {
         cancelByType(context, scheduleId, EVENT_AUTO_MISSED)
     }
 
-    private fun scheduleOccurrence(context: Context, scheduleId: Long, time: String, scheduledAt: Long) {
+    private fun scheduleOccurrence(
+        context: Context,
+        scheduleId: Long,
+        time: String,
+        scheduledAt: Long,
+        reminderTriggerAt: Long = scheduledAt,
+        autoMissedTriggerAt: Long = scheduledAt + MISSED_DELAY_MS,
+        scheduleReminder: Boolean = true,
+    ) {
+        if (scheduleReminder) {
+            setAlarmAt(
+                context = context,
+                scheduleId = scheduleId,
+                time = time,
+                triggerAt = reminderTriggerAt,
+                eventType = EVENT_REMINDER,
+                scheduledAt = scheduledAt,
+                useAlarmClock = true
+            )
+        } else {
+            cancelByType(context, scheduleId, EVENT_REMINDER)
+        }
         setAlarmAt(
             context = context,
             scheduleId = scheduleId,
             time = time,
-            triggerAt = scheduledAt,
-            eventType = EVENT_REMINDER,
-            scheduledAt = scheduledAt,
-            useAlarmClock = true
-        )
-        setAlarmAt(
-            context = context,
-            scheduleId = scheduleId,
-            time = time,
-            triggerAt = scheduledAt + MISSED_DELAY_MS,
+            triggerAt = autoMissedTriggerAt,
             eventType = EVENT_AUTO_MISSED,
             scheduledAt = scheduledAt,
             useAlarmClock = false

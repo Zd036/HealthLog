@@ -15,6 +15,7 @@ import com.rooftop.healthlog.MainActivity
 import com.rooftop.healthlog.R
 import com.rooftop.healthlog.data.local.entity.MedicationRecord
 import com.rooftop.healthlog.ui.medication.MedicationReminderActivity
+import com.rooftop.healthlog.utils.MEDICATION_STATUS_MISSED
 import com.rooftop.healthlog.worker.MedicationReminderScheduler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -60,22 +61,24 @@ class MedicationAlarmReceiver : BroadcastReceiver() {
                     scheduleId = scheduleId,
                     scheduledTime = scheduledAt
                 ) > 0
+                val hasMeds = app.medicationRepository.hasMedicationsForSchedule(scheduleId)
 
                 when {
+                    !hasMeds -> {
+                        MedicationReminderScheduler.cancelOne(context, scheduleId)
+                    }
                     eventType == MedicationReminderScheduler.EVENT_AUTO_MISSED -> {
                         if (!handled) {
                             autoMarkMissed(app, scheduleId, scheduledAt)
                         }
-                        // 修改点2：自动漏服执行完成后再滚动到下一天，避免覆盖当前漏服任务。
-                        MedicationReminderScheduler.scheduleNextDay(context, scheduleId, time)
+                        MedicationReminderScheduler.rescheduleAll(context)
                     }
                     handled -> {
-                        // 该时间点若已被提前处理，提醒触发时直接滚动到下一天。
-                        MedicationReminderScheduler.scheduleNextDay(context, scheduleId, time)
+                        MedicationReminderScheduler.rescheduleAll(context)
                     }
                     !handled -> {
-                        showNotification(context, scheduleId, time)
-                        tryStartFullScreen(context, scheduleId, time)
+                        showNotification(context, scheduleId, time, scheduledAt)
+                        tryStartFullScreen(context, scheduleId, time, scheduledAt)
                     }
                 }
             } catch (_: Throwable) {
@@ -122,7 +125,7 @@ class MedicationAlarmReceiver : BroadcastReceiver() {
         }
     }
 
-    private fun showNotification(context: Context, scheduleId: Long, time: String) {
+    private fun showNotification(context: Context, scheduleId: Long, time: String, scheduledAt: Long = scheduleTimeMillis(time)) {
         ensureChannel(context)
 
         // 全屏意图：在后台/锁屏时由系统呈现为全屏 Activity
@@ -130,6 +133,7 @@ class MedicationAlarmReceiver : BroadcastReceiver() {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra(MedicationReminderActivity.EXTRA_SCHEDULE_ID, scheduleId)
             putExtra(MedicationReminderActivity.EXTRA_TIME, time)
+            putExtra(MedicationReminderActivity.EXTRA_SCHEDULED_AT, scheduledAt)
         }
         val fullPi = PendingIntent.getActivity(
             context,
@@ -151,7 +155,7 @@ class MedicationAlarmReceiver : BroadcastReceiver() {
         val notif = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle("⏰ $time 服药时间到")
-            .setContentText("请点击查看药品清单并确认服用")
+            .setContentText("请点击后直接确认已服用")
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setAutoCancel(true)
@@ -170,12 +174,13 @@ class MedicationAlarmReceiver : BroadcastReceiver() {
     }
 
     /** 尝试启动全屏 Activity（前台允许；后台依赖 setFullScreenIntent） */
-    private fun tryStartFullScreen(context: Context, scheduleId: Long, time: String) {
+    private fun tryStartFullScreen(context: Context, scheduleId: Long, time: String, scheduledAt: Long) {
         try {
             val i = Intent(context, MedicationReminderActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
                 putExtra(MedicationReminderActivity.EXTRA_SCHEDULE_ID, scheduleId)
                 putExtra(MedicationReminderActivity.EXTRA_TIME, time)
+                putExtra(MedicationReminderActivity.EXTRA_SCHEDULED_AT, scheduledAt)
             }
             context.startActivity(i)
         } catch (_: Throwable) {
@@ -196,7 +201,7 @@ class MedicationAlarmReceiver : BroadcastReceiver() {
                 unit = med.unit,
                 scheduledTime = scheduledAt,
                 actualTime = null,
-                status = "missed"
+                status = MEDICATION_STATUS_MISSED
             )
         }
         app.medicationRepository.insertRecordsIfNotRecorded(scheduleId, scheduledAt, records)

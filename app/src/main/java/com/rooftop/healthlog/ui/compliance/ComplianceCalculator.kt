@@ -3,6 +3,7 @@ package com.rooftop.healthlog.ui.compliance
 import com.rooftop.healthlog.data.local.entity.Medication
 import com.rooftop.healthlog.data.local.entity.MedicationRecord
 import com.rooftop.healthlog.data.local.entity.MedicationSchedule
+import com.rooftop.healthlog.utils.MEDICATION_STATUS_TAKEN
 import com.rooftop.healthlog.utils.DateUtils
 
 /** 单药依从性统计（按药品名汇总，即使该药已被删除亦计入历史） */
@@ -38,7 +39,7 @@ object ComplianceCalculator {
      * - 每天应服次数 = 所有启用的 MedicationSchedule 数
      *   （删除的 schedule 若历史记录存在则这部分记录仍计入 actual）
      *   因为 Room 模式里 schedule 仅保留启用定时点，我们以"已存在记录+启用 schedule"两者并集来估算
-     * - 实服 = status == "taken"
+     * - 实服 = status == taken
      */
     fun build(
         now: Long,
@@ -75,7 +76,7 @@ object ComplianceCalculator {
                 ((rangeEnd - effectiveStart) / (24L * 3600_000L)).toInt() + 1
             if (effectiveDays <= 0) continue
             val expected = effectiveDays * enabledSchedulesPerDay
-            val actual = byName[name]?.count { it.status == "taken" } ?: 0
+            val actual = byName[name]?.count { it.status == MEDICATION_STATUS_TAKEN } ?: 0
             perMed += MedicationCompliance(name, expected, actual)
         }
 

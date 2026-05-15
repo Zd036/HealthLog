@@ -1,5 +1,6 @@
 package com.rooftop.healthlog.ui.settings
 
+import android.content.Intent
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -13,13 +14,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.rooftop.healthlog.ui.appViewModel
 import com.rooftop.healthlog.ui.components.BigCard
 import com.rooftop.healthlog.ui.components.PrimaryBigButton
 import com.rooftop.healthlog.ui.components.UiFeedbackBus
 import com.rooftop.healthlog.ui.theme.*
+import com.rooftop.healthlog.utils.ReminderPermissionHelper
+import com.rooftop.healthlog.utils.ReminderPermissionStatus
 
 @Composable
 fun SettingsScreen() {
@@ -29,10 +35,25 @@ fun SettingsScreen() {
     val importing by vm.importing.collectAsStateWithLifecycle()
     val exportResult by vm.exportResult.collectAsStateWithLifecycle()
     val importResult by vm.importResult.collectAsStateWithLifecycle()
+    val reminderPermissionStatus by vm.reminderPermissionStatus.collectAsStateWithLifecycle()
 
     var showExportConfirm by remember { mutableStateOf(false) }
     var pendingImportUri by remember { mutableStateOf<android.net.Uri?>(null) }
     val ctx = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    LaunchedEffect(Unit) {
+        vm.refreshReminderPermissionStatus()
+    }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                vm.refreshReminderPermissionStatus()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     // SAF：仅选 CSV 文件
     val importLauncher = rememberLauncherForActivityResult(
@@ -59,13 +80,14 @@ fun SettingsScreen() {
                 r.isEmpty && r.skippedDuplicates == 0 && r.skippedInvalid == 0 ->
                     "未导入任何数据"
                 else -> buildString {
-                    append("成功导入 ")
-                    append("${r.intakeAdded} 条出入量、")
-                    append("${r.vitalsAdded} 条体征、")
-                    append("${r.medRecordsAdded} 条服药记录、")
-                    append("${r.medSettingsAdded} 条用药设置")
-                    if (r.skippedDuplicates > 0) append("\n跳过 ${r.skippedDuplicates} 条重复记录")
-                    if (r.skippedInvalid > 0) append("\n${r.skippedInvalid} 条记录格式错误已跳过")
+                    append("导入完成")
+                    append("\n成功导入：${r.importedCount} 条")
+                    append("\n跳过重复：${r.skippedDuplicates} 条")
+                    append("\n格式错误：${r.skippedInvalid} 条")
+                    append(
+                        "\n明细：出入量 ${r.intakeAdded}，体征 ${r.vitalsAdded}，" +
+                            "服药记录 ${r.medRecordsAdded}，用药设置 ${r.medSettingsAdded}"
+                    )
                 }
             }
             UiFeedbackBus.show(msg, long = true)
@@ -90,6 +112,26 @@ fun SettingsScreen() {
         IntakeOutputToggleSection(
             enabled = settings.enableIntakeOutput,
             onToggle = { vm.setEnableIntakeOutput(it) }
+        )
+
+        ReminderPermissionSection(
+            status = reminderPermissionStatus,
+            onRefresh = { vm.refreshReminderPermissionStatus() },
+            onOpenNotifications = {
+                ctx.startActivity(ReminderPermissionHelper.notificationSettingsIntent(ctx).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                })
+            },
+            onOpenExactAlarm = {
+                ctx.startActivity(ReminderPermissionHelper.exactAlarmSettingsIntent(ctx).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                })
+            },
+            onOpenFullScreen = {
+                ctx.startActivity(ReminderPermissionHelper.fullScreenSettingsIntent(ctx).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                })
+            }
         )
 
         DataIoSection(
@@ -159,6 +201,85 @@ fun SettingsScreen() {
 
     if (exporting) ProgressDialog("正在导出 ...")
     if (importing) ProgressDialog("正在导入 ...")
+}
+
+@Composable
+private fun ReminderPermissionSection(
+    status: ReminderPermissionStatus,
+    onRefresh: () -> Unit,
+    onOpenNotifications: () -> Unit,
+    onOpenExactAlarm: () -> Unit,
+    onOpenFullScreen: () -> Unit,
+) {
+    BigCard {
+        Text("服药提醒检查", style = MaterialTheme.typography.titleLarge)
+        Spacer(Modifier.height(8.dp))
+        Text(
+            if (status.allReady) {
+                "后台提醒所需权限已开启。"
+            } else {
+                "如果 APP 退到后台后不提醒，通常是下面这些系统权限没开。"
+            },
+            style = MaterialTheme.typography.bodyLarge,
+            color = if (status.allReady) SuccessGreen else HintGray
+        )
+        Spacer(Modifier.height(12.dp))
+        ReminderStatusRow(
+            label = "通知权限",
+            ready = status.notificationsReady,
+            buttonLabel = "去开启",
+            onClick = onOpenNotifications
+        )
+        Spacer(Modifier.height(8.dp))
+        ReminderStatusRow(
+            label = "精确闹钟",
+            ready = status.exactAlarmReady,
+            buttonLabel = "去开启",
+            onClick = onOpenExactAlarm
+        )
+        Spacer(Modifier.height(8.dp))
+        ReminderStatusRow(
+            label = "全屏提醒",
+            ready = status.fullScreenReady,
+            buttonLabel = "去开启",
+            onClick = onOpenFullScreen
+        )
+        Spacer(Modifier.height(12.dp))
+        OutlinedButton(
+            onClick = onRefresh,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("重新检查", style = MaterialTheme.typography.titleMedium)
+        }
+    }
+}
+
+@Composable
+private fun ReminderStatusRow(
+    label: String,
+    ready: Boolean,
+    buttonLabel: String,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(label, style = MaterialTheme.typography.titleMedium)
+            Text(
+                if (ready) "已开启" else "未开启",
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (ready) SuccessGreen else DangerRed
+            )
+        }
+        if (!ready) {
+            TextButton(onClick = onClick) {
+                Text(buttonLabel, style = MaterialTheme.typography.titleMedium)
+            }
+        }
+    }
 }
 
 @Composable

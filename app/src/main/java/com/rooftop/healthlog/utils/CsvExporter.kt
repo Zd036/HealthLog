@@ -100,7 +100,7 @@ object CsvExporter {
 
             // 体征
             w.appendLine("===== 体征记录 =====")
-            w.appendLine("日期,时间,收缩压(mmHg),舒张压(mmHg),心率(次/分),体重(斤),血糖(mmol/L),备注")
+            w.appendLine("日期,时间,高压(mmHg),低压(mmHg),脉率(次/分),体重(斤),血糖(mmol/L),备注")
             for (v in data.vitals) {
                 val date = DateUtils.formatYmd(v.time)
                 val time = DateUtils.formatHm(v.time)
@@ -119,7 +119,7 @@ object CsvExporter {
             for (item in HistoryViewModel.groupMedicationRecords(data.medRecords)) {
                 val date = DateUtils.formatYmd(item.scheduledTime)
                 val planned = DateUtils.formatHm(item.scheduledTime)
-                val status = if (item.status == "taken") "已服用" else "漏服"
+                val status = medicationStatusLabel(item.status)
                 w.appendLine("$date,$planned,$status,${esc(item.medicationDetails.joinToString(","))}")
             }
             w.appendLine()

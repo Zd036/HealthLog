@@ -14,6 +14,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.rooftop.healthlog.ui.history.MedicationHistoryItem
 import com.rooftop.healthlog.ui.theme.*
+import com.rooftop.healthlog.utils.MEDICATION_STATUS_TAKEN
+import com.rooftop.healthlog.utils.medicationStatusLabel
 import com.rooftop.healthlog.utils.DateUtils
 
 fun LazyListScope.medicationList(records: List<MedicationHistoryItem>) {
@@ -33,7 +35,7 @@ fun LazyListScope.medicationList(records: List<MedicationHistoryItem>) {
 @Composable
 private fun MedicationItem(r: MedicationHistoryItem) {
     var expanded by remember { mutableStateOf(false) }
-    val taken = r.status == "taken"
+    val taken = r.status == MEDICATION_STATUS_TAKEN
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -58,10 +60,6 @@ private fun MedicationItem(r: MedicationHistoryItem) {
                 Spacer(Modifier.width(8.dp))
                 Column(Modifier.weight(1f)) {
                     Text(
-                        if (taken) "已按时服用" else "漏服",
-                        style = MaterialTheme.typography.titleMedium
-                    )
-                    Text(
                         r.medicationNames.joinToString("、"),
                         style = MaterialTheme.typography.bodyMedium,
                         color = HintGray
@@ -70,7 +68,7 @@ private fun MedicationItem(r: MedicationHistoryItem) {
                 val chipColor = if (taken) SuccessGreen else DangerRed
                 AssistChip(
                     onClick = {},
-                    label = { Text(if (taken) "按时" else "漏服", color = TextDark) },
+                    label = { Text(if (taken) "已服用" else "漏服", color = TextDark) },
                     leadingIcon = {
                         if (taken) Icon(Icons.Filled.Check, null, tint = chipColor)
                         else Icon(Icons.Filled.Close, null, tint = chipColor)

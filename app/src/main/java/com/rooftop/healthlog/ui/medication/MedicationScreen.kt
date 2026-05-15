@@ -24,7 +24,8 @@ import com.rooftop.healthlog.ui.components.PrimaryBigButton
 import com.rooftop.healthlog.ui.components.SecondaryBigButton
 import com.rooftop.healthlog.ui.theme.HintGray
 import com.rooftop.healthlog.ui.theme.PrimaryBlue
-import kotlinx.coroutines.launch
+import com.rooftop.healthlog.utils.medicationDoseLabel
+import com.rooftop.healthlog.utils.medicationSpecificationLabel
 
 /** 用药管理列表页 */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -137,11 +138,8 @@ private fun ScheduleItem(
 }
 
 private fun formatMed(m: Medication): String {
-    val dosage = if (m.dosage == m.dosage.toInt().toFloat()) m.dosage.toInt().toString()
-    else "%.1f".format(m.dosage)
-    val spec = if (m.specification > 0)
-        "（${"%.0f".format(m.specification)}mg/${m.unit}）" else ""
-    return "${m.name}：$dosage${m.unit}$spec"
+    val spec = medicationSpecificationLabel(m.specification, m.unit)?.let { "（$it）" }.orEmpty()
+    return "${m.name}：${medicationDoseLabel(m.dosage, m.unit)}$spec"
 }
 
 private fun timeLabel(time: String): String {
@@ -195,14 +193,15 @@ fun TimePickerDialogSimple(
 @Composable
 private fun ScheduleEditScreen(schedule: MedicationSchedule, onClose: () -> Unit) {
     val vm: MedicationViewModel = appViewModel()
-    val scope = rememberCoroutineScope()
-    var meds by remember { mutableStateOf<List<Medication>>(emptyList()) }
+    val schedules by vm.schedules.collectAsStateWithLifecycle()
+    val currentSchedule = schedules.firstOrNull { it.schedule.id == schedule.id }
+    val meds = currentSchedule?.medications.orEmpty()
     var editingMed by remember { mutableStateOf<Medication?>(null) }
     var showTimePicker by remember { mutableStateOf(false) }
-    var time by remember { mutableStateOf(schedule.time) }
+    var time by remember(schedule.id) { mutableStateOf(schedule.time) }
 
-    LaunchedEffect(schedule.id) {
-        meds = vm.getMedicationsFor(schedule.id)
+    LaunchedEffect(currentSchedule?.schedule?.time) {
+        currentSchedule?.schedule?.time?.let { time = it }
     }
 
     Dialog(
@@ -279,7 +278,7 @@ private fun ScheduleEditScreen(schedule: MedicationSchedule, onClose: () -> Unit
                                     Column(Modifier.weight(1f)) {
                                         Text(m.name, style = MaterialTheme.typography.titleLarge)
                                         Text(
-                                            "${m.dosage}${m.unit}",
+                                            medicationDoseLabel(m.dosage, m.unit),
                                             style = MaterialTheme.typography.bodyLarge
                                         )
                                         if (m.method.isNotBlank()) Text(
@@ -293,7 +292,6 @@ private fun ScheduleEditScreen(schedule: MedicationSchedule, onClose: () -> Unit
                                     }
                                     IconButton(onClick = {
                                         vm.deleteMedication(m)
-                                        scope.launch { meds = vm.getMedicationsFor(schedule.id) }
                                     }) { Icon(Icons.Filled.Delete, "删除") }
                                 }
                             }
@@ -329,12 +327,7 @@ private fun ScheduleEditScreen(schedule: MedicationSchedule, onClose: () -> Unit
             onDismiss = { editingMed = null },
             onSave = {
                 vm.upsertMedication(it)
-                scope.launch {
-                    // 等待一下让 DAO 写入完成再刷新
-                    kotlinx.coroutines.delay(120)
-                    meds = vm.getMedicationsFor(schedule.id)
-                    editingMed = null
-                }
+                editingMed = null
             }
         )
     }

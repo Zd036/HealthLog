@@ -43,7 +43,7 @@ class ComplianceReportViewModel(app: HealthLogApp) : AndroidViewModel(app) {
             val now = System.currentTimeMillis()
             val schedules = medRepo.getAllSchedules().first()
             val meds = medRepo.getAllMedications().first()
-            val records = medRepo.allRecords().first()
+            val records = medRepo.getAllRecordsForExport().first()
             val seven = ComplianceCalculator.build(now, 7, schedules, meds, records)
             val thirty = ComplianceCalculator.build(now, 30, schedules, meds, records)
             _data.value = ComplianceReportData(seven, thirty)

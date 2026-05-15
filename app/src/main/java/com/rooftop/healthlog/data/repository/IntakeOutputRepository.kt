@@ -3,6 +3,7 @@ package com.rooftop.healthlog.data.repository
 import com.rooftop.healthlog.data.local.dao.IntakeOutputDao
 import com.rooftop.healthlog.data.local.entity.CustomCategory
 import com.rooftop.healthlog.data.local.entity.IntakeOutputRecord
+import com.rooftop.healthlog.utils.DateUtils
 import kotlinx.coroutines.flow.Flow
 import java.util.Calendar
 
@@ -40,7 +41,7 @@ class IntakeOutputRepository(private val dao: IntakeOutputDao) {
     suspend fun delete(record: IntakeOutputRecord) = dao.delete(record)
     suspend fun update(record: IntakeOutputRecord) = dao.update(record)
 
-    /** 今日（7:00 - 次日 7:00） */
+    /** 今日（自然日 00:00 - 次日 00:00） */
     fun todayRecords(): Flow<List<IntakeOutputRecord>> {
         val (s, e) = todayRange()
         return dao.getBetween(s, e)
@@ -49,20 +50,34 @@ class IntakeOutputRepository(private val dao: IntakeOutputDao) {
     fun records(start: Long, end: Long): Flow<List<IntakeOutputRecord>> =
         dao.getBetween(start, end)
 
-    fun all(): Flow<List<IntakeOutputRecord>> = dao.getAll()
+    /** 历史记录页仅取最近 500 条，避免全量数据拖慢列表。 */
+    fun getRecentRecordsForDisplay(): Flow<List<IntakeOutputRecord>> = dao.getRecentRecords()
+
+    /** 导出功能仍需读取全量数据。 */
+    fun getAllRecordsForExport(): Flow<List<IntakeOutputRecord>> = dao.getAllRecords()
+
+    /** 历史页根据总数决定是否显示“最近 500 条”提示。 */
+    fun countAllRecords(): Flow<Int> = dao.countAllRecords()
 
     suspend fun addCategory(c: CustomCategory) = dao.insertCategory(c)
     fun getCategories(type: String): Flow<List<CustomCategory>> = dao.getCategories(type)
 
-    /** 计算 7:00 为分界的"当天"开始结束时间 */
+    /** 导入时按业务字段判断重复。 */
+    suspend fun countDuplicate(record: IntakeOutputRecord): Int =
+        dao.countDuplicate(
+            time = record.time,
+            type = record.type,
+            category = record.category,
+            amount = record.amount
+        )
+
+    /** 计算自然日 00:00 - 次日 00:00 的时间范围 */
     fun todayRange(): Pair<Long, Long> {
-        val now = Calendar.getInstance()
-        val start = Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, 7)
-            set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
-            if (timeInMillis > now.timeInMillis) add(Calendar.DAY_OF_YEAR, -1)
-        }
-        val end = (start.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, 1) }
-        return start.timeInMillis to end.timeInMillis
+        val start = DateUtils.todayStart()
+        val end = Calendar.getInstance().apply {
+            timeInMillis = start
+            add(Calendar.DAY_OF_YEAR, 1)
+        }.timeInMillis
+        return start to end
     }
 }

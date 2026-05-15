@@ -9,7 +9,12 @@ import com.rooftop.healthlog.data.local.entity.MedicationRecord
 import com.rooftop.healthlog.data.local.entity.MedicationSchedule
 import com.rooftop.healthlog.data.local.entity.VitalSignsRecord
 import com.rooftop.healthlog.ui.components.UiFeedbackBus
+import com.rooftop.healthlog.utils.buildDailyVitalAlertMessages
+import com.rooftop.healthlog.utils.buildRecentVitalItems
 import com.rooftop.healthlog.utils.DateUtils
+import com.rooftop.healthlog.utils.MEDICATION_STATUS_MISSED
+import com.rooftop.healthlog.utils.MEDICATION_STATUS_TAKEN
+import com.rooftop.healthlog.utils.RecentVitalItem
 import com.rooftop.healthlog.worker.MedicationReminderScheduler
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -21,8 +26,7 @@ data class HomeUiState(
     val totalOutput: Float = 0f,
     val stoolCount: Int = 0,
     val hasIntakeOutput: Boolean = false,
-    val latestVital: VitalSignsRecord? = null,
-    val yesterdayWeight: Float? = null,
+    val recentVitals: List<RecentVitalItem> = emptyList(),
     val todayMedicationSchedules: List<PendingSchedule> = emptyList(),
     val medicationDone: Boolean = false,
     val alerts: List<String> = emptyList(),
@@ -56,32 +60,34 @@ class HomeViewModel(app: HealthLogApp) : AndroidViewModel(app) {
         }
     }
 
-    private val yesterdayWeightFlow: Flow<Float?> = flow {
-        while (true) {
-            val todayStart = DateUtils.todayStart()
-            val yesterdayStart = DateUtils.daysAgoStart(1)
-            emit(vitalsRepo.getWeightInRange(yesterdayStart, todayStart)?.weight)
-            kotlinx.coroutines.delay(60_000L)
-        }
-    }
+    private val vitalAlertWindowFlow: Flow<List<VitalSignsRecord>> =
+        vitalsRepo.between(DateUtils.daysAgoStart(1), dayRange().second)
 
     val uiState: StateFlow<HomeUiState> =
         combine(
-            combine(intakeRepo.todayRecords(), vitalsRepo.latest(), todayMedicationStateFlow()) { r, v, m -> Triple(r, v, m) },
-            combine(threeDayImbalanceFlow, settingsRepo.settings, yesterdayWeightFlow) { b, s, w -> Triple(b, s, w) },
+            combine(
+                intakeRepo.todayRecords(),
+                vitalAlertWindowFlow,
+                todayMedicationStateFlow()
+            ) { r, alertWindowVitals, m ->
+                Triple(r, alertWindowVitals, m)
+            },
+            combine(threeDayImbalanceFlow, settingsRepo.settings) { b, s -> b to s },
             _clickedSchedule
-        ) { (records, vital, medPair), (threeDayBad, settings, yWeight), clicked ->
+        ) { (records, alertWindowVitals, medPair), (threeDayBad, settings), clicked ->
             val (schedules, done) = medPair
             val (intakeSum, outputSum, stool) = aggregate(records)
-            val alerts = buildAlerts(intakeSum, outputSum, vital, yWeight)
+            val todayStart = DateUtils.todayStart()
+            val todayVitals = alertWindowVitals.filter { it.time >= todayStart }
+            val recentVitals = buildRecentVitalItems(todayVitals, alertWindowVitals)
+            val alerts = buildAlerts(intakeSum, outputSum, alertWindowVitals)
             val dismissedToday = settings.lastDismissedThreeDayAlertDate == DateUtils.todayStart()
             HomeUiState(
                 totalIntake = intakeSum,
                 totalOutput = outputSum,
                 stoolCount = stool,
                 hasIntakeOutput = records.isNotEmpty(),
-                latestVital = vital,
-                yesterdayWeight = yWeight,
+                recentVitals = recentVitals,
                 todayMedicationSchedules = schedules,
                 medicationDone = done,
                 alerts = alerts,
@@ -126,7 +132,7 @@ class HomeViewModel(app: HealthLogApp) : AndroidViewModel(app) {
                     unit = med.unit,
                     scheduledTime = scheduledMillis,
                     actualTime = now,
-                    status = "taken"
+                    status = MEDICATION_STATUS_TAKEN
                 )
             }
             // 修改点2：数据层再次以时间点粒度防重复，taken/missed 任一已存在都拒绝。
@@ -141,8 +147,7 @@ class HomeViewModel(app: HealthLogApp) : AndroidViewModel(app) {
                 return@launch
             }
             // 修改点2：处理完成后取消当前自动漏服任务，并注册下一天提醒。
-            MedicationReminderScheduler.cancelAutoMissed(getApplication(), pending.schedule.id)
-            MedicationReminderScheduler.scheduleNextDay(getApplication(), pending.schedule.id, pending.schedule.time)
+            MedicationReminderScheduler.rescheduleAll(getApplication())
             _clickedSchedule.value = null
             UiFeedbackBus.show("已记录服药")
         }
@@ -161,7 +166,7 @@ class HomeViewModel(app: HealthLogApp) : AndroidViewModel(app) {
                     unit = med.unit,
                     scheduledTime = scheduledMillis,
                     actualTime = null,
-                    status = "missed"
+                    status = MEDICATION_STATUS_MISSED
                 )
             }
             val inserted = medRepo.insertRecordsIfNotRecorded(
@@ -174,8 +179,7 @@ class HomeViewModel(app: HealthLogApp) : AndroidViewModel(app) {
                 UiFeedbackBus.show("该时间点药品已标记，不可重复操作")
                 return@launch
             }
-            MedicationReminderScheduler.cancelAutoMissed(getApplication(), pending.schedule.id)
-            MedicationReminderScheduler.scheduleNextDay(getApplication(), pending.schedule.id, pending.schedule.time)
+            MedicationReminderScheduler.rescheduleAll(getApplication())
             _clickedSchedule.value = null
             UiFeedbackBus.show("已标记为漏服")
         }
@@ -224,28 +228,14 @@ class HomeViewModel(app: HealthLogApp) : AndroidViewModel(app) {
     }
 
     private fun buildAlerts(
-        intake: Float, output: Float,
-        vital: VitalSignsRecord?, yesterdayWeight: Float?
+        intake: Float,
+        output: Float,
+        alertWindowVitals: List<VitalSignsRecord>
     ): List<String> {
         val list = mutableListOf<String>()
         val diff = intake - output
         if (diff > 1000 || diff < -1000) list += "今日出入量差值超标（${diff.toInt()}ml），请注意"
-        if (vital != null) {
-            val sys = vital.systolic; val dia = vital.diastolic
-            if (sys != null && (sys > 140 || sys < 90)) list += "血压异常，收缩压 $sys mmHg"
-            if (dia != null && (dia > 90 || dia < 60)) list += "血压异常，舒张压 $dia mmHg"
-            val hr = vital.heartRate
-            if (hr != null && (hr > 100 || hr < 60)) list += "心率异常，$hr 次/分"
-            val sugar = vital.bloodSugar
-            if (sugar != null && (sugar > 11.1f || sugar < 3.9f))
-                list += "血糖异常，${"%.1f".format(sugar)} mmol/L"
-            val weight = vital.weight
-            if (weight != null && yesterdayWeight != null) {
-                val d = weight - yesterdayWeight
-                if (d >= 2f) list += "24小时内体重增加 ${"%.1f".format(d)} 斤，请就医检查"
-                else if (d >= 1f) list += "体重增加较快，请注意"
-            }
-        }
+        list += buildDailyVitalAlertMessages(alertWindowVitals)
         return list
     }
 
@@ -264,8 +254,8 @@ class HomeViewModel(app: HealthLogApp) : AndroidViewModel(app) {
                     it.scheduleId == schedule.id && it.scheduledTime == scheduledMillis
                 }
                 val status = when {
-                    slotRecords.any { it.status == "missed" } -> MedicationSlotStatus.MISSED
-                    slotRecords.any { it.status == "taken" } -> MedicationSlotStatus.TAKEN
+                    slotRecords.any { it.status == MEDICATION_STATUS_MISSED } -> MedicationSlotStatus.MISSED
+                    slotRecords.any { it.status == MEDICATION_STATUS_TAKEN } -> MedicationSlotStatus.TAKEN
                     else -> MedicationSlotStatus.PENDING
                 }
                 slots += PendingSchedule(

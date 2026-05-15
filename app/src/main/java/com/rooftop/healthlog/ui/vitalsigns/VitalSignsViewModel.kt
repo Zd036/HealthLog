@@ -4,6 +4,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.rooftop.healthlog.HealthLogApp
 import com.rooftop.healthlog.data.local.entity.VitalSignsRecord
+import com.rooftop.healthlog.utils.buildVitalAlertDetails
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -55,25 +56,6 @@ class VitalSignsViewModel(app: HealthLogApp) : AndroidViewModel(app) {
         )
     }
 
-    /**
-     * 修改点3：检查空字段名称列表
-     * 血糖改为纯可选项，不参与"未填提示"
-     */
-    fun emptyFieldNames(): List<String> {
-        val s = _state.value
-        val r = mutableListOf<String>()
-        if (s.systolic.isBlank()) r += "收缩压"
-        if (s.diastolic.isBlank()) r += "舒张压"
-        if (s.heartRate.isBlank()) r += "心率"
-        if (s.weight.isBlank()) r += "体重"
-        // 修改点3：血糖不再加入未填提示列表（纯可选）
-        return r
-    }
-
-    /**
-     * 是否全部为空（不允许保存）
-     * 修改点3：现在只检查 4 个核心字段（收缩压/舒张压/心率/体重），血糖单独判断
-     */
     fun isAllEmpty(): Boolean {
         val s = _state.value
         return s.systolic.isBlank() && s.diastolic.isBlank() &&
@@ -81,7 +63,18 @@ class VitalSignsViewModel(app: HealthLogApp) : AndroidViewModel(app) {
                s.bloodSugar.isBlank()
     }
 
-    fun save(onDone: (abnormalBloodSugar: Float?) -> Unit) {
+    fun bloodPressurePairMessage(): String? {
+        val s = _state.value
+        val hasSys = s.systolic.isNotBlank()
+        val hasDia = s.diastolic.isNotBlank()
+        return when {
+            hasSys && !hasDia -> "已填写高压，低压也需要同时填写。"
+            !hasSys && hasDia -> "已填写低压，高压也需要同时填写。"
+            else -> null
+        }
+    }
+
+    fun save(onDone: (List<String>) -> Unit) {
         val s = _state.value
         // 修改点2：保存时使用"保存瞬间"的真实时间，而非页面打开时间
         val now = System.currentTimeMillis()
@@ -96,9 +89,7 @@ class VitalSignsViewModel(app: HealthLogApp) : AndroidViewModel(app) {
         )
         viewModelScope.launch {
             repo.insert(record)
-            val sugar = record.bloodSugar
-            val abnormal = if (sugar != null && (sugar > 11.1f || sugar < 3.9f)) sugar else null
-            onDone(abnormal)
+            onDone(buildVitalAlertDetails(record, null).map { it.message })
         }
     }
 }
