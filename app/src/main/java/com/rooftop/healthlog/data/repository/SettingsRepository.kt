@@ -34,11 +34,6 @@ class SettingsRepository(private val dao: SettingsDao) {
         dao.upsert(cur.copy(outputReminderTimes = times))
     }
 
-    suspend fun setEnableStrongMedicationReminder(enabled: Boolean) {
-        val cur = getOrDefault()
-        dao.upsert(cur.copy(enableStrongMedicationReminder = enabled))
-    }
-
     /** 记录用户已关闭"连续 3 天出入量不平衡"警告的日期 */
     suspend fun setThreeDayAlertDismissed(dayStart: Long) {
         // 确保一行存在，再 UPDATE 局部字段（避免全表替换丢失其他字段）

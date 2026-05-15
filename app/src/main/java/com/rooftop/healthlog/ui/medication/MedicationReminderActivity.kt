@@ -1,15 +1,6 @@
 package com.rooftop.healthlog.ui.medication
 
-import android.app.KeyguardManager
-import android.content.Context
-import android.media.AudioManager
-import android.media.RingtoneManager
-import android.os.Build
 import android.os.Bundle
-import android.os.VibrationEffect
-import android.os.Vibrator
-import android.os.VibratorManager
-import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
@@ -34,16 +25,13 @@ import com.rooftop.healthlog.ui.theme.HealthLogTheme
 import com.rooftop.healthlog.ui.theme.SuccessGreen
 import com.rooftop.healthlog.utils.MedicationReminderActionHandler
 import com.rooftop.healthlog.worker.MedicationReminderScheduler
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.Calendar
 
 /**
- * 全屏用药提醒 Activity：
- * - 半透明黑色背景，覆盖整个屏幕
- * - 强提醒模式下响铃 5 秒 + 震动
- * - 屏幕常亮直到点击"已服用"
- * - 支持稍后 10 分钟再次提醒
+ * 通知点击后的用药提醒 Activity：
+ * - 展示当前时间点的处理入口
+ * - 支持“已服用”和“稍后 10 分钟提醒”
  */
 class MedicationReminderActivity : ComponentActivity() {
 
@@ -51,48 +39,24 @@ class MedicationReminderActivity : ComponentActivity() {
         const val EXTRA_SCHEDULE_ID = "scheduleId"
         const val EXTRA_TIME = "time"
         const val EXTRA_SCHEDULED_AT = "scheduledAt"
-        const val EXTRA_STRONG_REMINDER = "strongReminder"
     }
-
-    private var ringtone: android.media.Ringtone? = null
-    private var vibrator: Vibrator? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // 屏幕常亮 + 锁屏上展示
-        window.addFlags(
-            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
-            WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-            WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
-            WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
-        )
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-            setShowWhenLocked(true); setTurnScreenOn(true)
-            (getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager)
-                ?.requestDismissKeyguard(this, null)
-        }
-
         val scheduleId = intent.getLongExtra(EXTRA_SCHEDULE_ID, -1L)
         val time = intent.getStringExtra(EXTRA_TIME) ?: "00:00"
         val scheduledAt = intent.getLongExtra(EXTRA_SCHEDULED_AT, scheduleTimeMillis(time))
-        val strongReminderEnabled = intent.getBooleanExtra(EXTRA_STRONG_REMINDER, false)
         if (scheduleId == -1L) { finish(); return }
-
-        if (strongReminderEnabled) {
-            startRingAndVibrate()
-        }
 
         setContent {
             HealthLogTheme {
                 ReminderContent(
                     scheduleId = scheduleId,
                     time = time,
-                    strongReminderEnabled = strongReminderEnabled,
                     onEmpty = {
                         lifecycleScope.launch {
                             cancelReminderNotification(scheduleId)
-                            stopRingAndVibrate()
                             finish()
                         }
                     },
@@ -100,12 +64,10 @@ class MedicationReminderActivity : ComponentActivity() {
                         lifecycleScope.launch {
                             val inserted = recordTaken(scheduleId, scheduledAt)
                             if (!inserted) {
-                                stopRingAndVibrate()
                                 finish()
                                 return@launch
                             }
                             cancelReminderNotification(scheduleId)
-                            stopRingAndVibrate()
                             finish()
                         }
                     },
@@ -118,7 +80,6 @@ class MedicationReminderActivity : ComponentActivity() {
                                 scheduledAt = scheduledAt
                             )
                             cancelReminderNotification(scheduleId)
-                            stopRingAndVibrate()
                             finish()
                         }
                     }
@@ -127,42 +88,7 @@ class MedicationReminderActivity : ComponentActivity() {
         }
     }
 
-    private fun startRingAndVibrate() {
-        try {
-            val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
-            ringtone = RingtoneManager.getRingtone(this, uri)
-            ringtone?.streamType = AudioManager.STREAM_ALARM
-            ringtone?.play()
-        } catch (_: Throwable) {}
-
-        vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            (getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager).defaultVibrator
-        } else {
-            @Suppress("DEPRECATION")
-            getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
-        }
-        vibrator?.let {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                it.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 800, 400, 800, 400, 800), -1))
-            } else {
-                @Suppress("DEPRECATION")
-                it.vibrate(longArrayOf(0, 800, 400, 800, 400, 800), -1)
-            }
-        }
-
-        // 5 秒后停止响铃
-        lifecycleScope.launch {
-            delay(5000)
-            try { ringtone?.stop() } catch (_: Throwable) {}
-        }
-    }
-
-    private fun stopRingAndVibrate() {
-        try { ringtone?.stop() } catch (_: Throwable) {}
-        try { vibrator?.cancel() } catch (_: Throwable) {}
-    }
-
-    /** 修改点2：全屏提醒确认服药也按时间点防重复，不再处理库存字段。 */
+    /** 通知详情页确认服药也按时间点防重复。 */
     private suspend fun recordTaken(scheduleId: Long, scheduledAt: Long): Boolean {
         val app = applicationContext as HealthLogApp
         val inserted = MedicationReminderActionHandler.markTaken(app, scheduleId, scheduledAt)
@@ -181,11 +107,6 @@ class MedicationReminderActivity : ComponentActivity() {
     override fun onBackPressed() {
         // 不允许跳过
     }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        stopRingAndVibrate()
-    }
 }
 
 private fun scheduleTimeMillis(time: String): Long {
@@ -200,12 +121,11 @@ private fun scheduleTimeMillis(time: String): Long {
     }.timeInMillis
 }
 
-/** 全屏提醒内容 */
+/** 提醒内容 */
 @Composable
 private fun ReminderContent(
     scheduleId: Long,
     time: String,
-    strongReminderEnabled: Boolean,
     onEmpty: () -> Unit,
     onTaken: (List<Medication>) -> Unit,
     onSnooze: () -> Unit
@@ -253,17 +173,8 @@ private fun ReminderContent(
                             style = MaterialTheme.typography.titleLarge)
                     }
                     Text(
-                        if (strongReminderEnabled) {
-                            "强提醒已开启。服用完成后点击“已服用”，或稍后 10 分钟再提醒。"
-                        } else {
-                            "服用完成后，直接点击下方“已服用”，或选择稍后提醒。"
-                        },
+                        "请按时服药，或选择10分钟后再次提醒。如不处理，系统将每30分钟提醒1次。",
                         style = MaterialTheme.typography.titleMedium
-                    )
-                    Text(
-                        "不再显示完整药品清单，减少翻动和等待。",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = Color(0xFF666666)
                     )
                 }
             }
@@ -282,7 +193,7 @@ private fun ReminderContent(
                 modifier = Modifier.fillMaxWidth().height(56.dp),
                 shape = RoundedCornerShape(12.dp)
             ) {
-                Text("10 分钟后提醒", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Text("稍后提醒", fontSize = 20.sp, fontWeight = FontWeight.Bold)
             }
         }
     }

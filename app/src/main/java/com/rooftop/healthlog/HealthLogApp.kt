@@ -67,7 +67,7 @@ class HealthLogApp : Application(), Configuration.Provider {
                 "服药提醒",
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
-                description = "按时服药提醒（支持通知快捷操作与可选强提醒）"
+                description = "服药提醒"
                 enableVibration(true)
                 vibrationPattern = longArrayOf(0, 500, 500, 500)
             }

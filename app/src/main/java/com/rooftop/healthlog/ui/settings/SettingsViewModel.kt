@@ -62,12 +62,6 @@ class SettingsViewModel(private val app: HealthLogApp) : AndroidViewModel(app) {
         viewModelScope.launch { app.settingsRepository.setEnableIntakeOutput(enabled) }
     }
 
-    fun setEnableStrongMedicationReminder(enabled: Boolean) {
-        viewModelScope.launch {
-            app.settingsRepository.setEnableStrongMedicationReminder(enabled)
-        }
-    }
-
     /** 修改点1：全量导出到 Download/healthlog/ */
     fun exportAll() {
         if (_exporting.value) return

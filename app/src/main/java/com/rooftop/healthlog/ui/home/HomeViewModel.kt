@@ -1,5 +1,6 @@
 package com.rooftop.healthlog.ui.home
 
+import androidx.core.app.NotificationManagerCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.rooftop.healthlog.HealthLogApp
@@ -146,6 +147,7 @@ class HomeViewModel(app: HealthLogApp) : AndroidViewModel(app) {
                 UiFeedbackBus.show("该时间点药品已标记，不可重复操作")
                 return@launch
             }
+            NotificationManagerCompat.from(getApplication()).cancel(pending.schedule.id.toInt())
             // 修改点2：处理完成后取消当前自动漏服任务，并注册下一天提醒。
             MedicationReminderScheduler.rescheduleAll(getApplication())
             _clickedSchedule.value = null
@@ -179,6 +181,7 @@ class HomeViewModel(app: HealthLogApp) : AndroidViewModel(app) {
                 UiFeedbackBus.show("该时间点药品已标记，不可重复操作")
                 return@launch
             }
+            NotificationManagerCompat.from(getApplication()).cancel(pending.schedule.id.toInt())
             MedicationReminderScheduler.rescheduleAll(getApplication())
             _clickedSchedule.value = null
             UiFeedbackBus.show("已标记为漏服")

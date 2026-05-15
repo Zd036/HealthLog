@@ -15,13 +15,9 @@ import com.rooftop.healthlog.receiver.MedicationAlarmReceiver
 data class ReminderPermissionStatus(
     val notificationsReady: Boolean,
     val exactAlarmReady: Boolean,
-    val fullScreenReady: Boolean,
 ) {
     val allReady: Boolean
-        get() = allReady(requireFullScreen = true)
-
-    fun allReady(requireFullScreen: Boolean): Boolean =
-        notificationsReady && exactAlarmReady && (!requireFullScreen || fullScreenReady)
+        get() = notificationsReady && exactAlarmReady
 }
 
 object ReminderPermissionHelper {
@@ -50,17 +46,9 @@ object ReminderPermissionHelper {
             true
         }
 
-        val fullScreenReady = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            val nm = context.getSystemService(NotificationManager::class.java)
-            nm?.canUseFullScreenIntent() == true
-        } else {
-            true
-        }
-
         return ReminderPermissionStatus(
             notificationsReady = appNotificationsEnabled && runtimeNotificationGranted && reminderChannelEnabled,
             exactAlarmReady = exactAlarmReady,
-            fullScreenReady = fullScreenReady,
         )
     }
 
@@ -72,15 +60,6 @@ object ReminderPermissionHelper {
     fun exactAlarmSettingsIntent(context: Context): Intent =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
-                data = Uri.parse("package:${context.packageName}")
-            }
-        } else {
-            appDetailsSettingsIntent(context)
-        }
-
-    fun fullScreenSettingsIntent(context: Context): Intent =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT).apply {
                 data = Uri.parse("package:${context.packageName}")
             }
         } else {

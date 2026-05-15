@@ -2,10 +2,12 @@ package com.rooftop.healthlog.ui.history
 
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.core.app.NotificationManagerCompat
 import com.rooftop.healthlog.HealthLogApp
 import com.rooftop.healthlog.data.local.entity.IntakeOutputRecord
 import com.rooftop.healthlog.data.local.entity.MedicationRecord
 import com.rooftop.healthlog.data.local.entity.VitalSignsRecord
+import com.rooftop.healthlog.ui.components.UiFeedbackBus
 import com.rooftop.healthlog.utils.DateUtils
 import com.rooftop.healthlog.utils.MEDICATION_STATUS_MISSED
 import com.rooftop.healthlog.utils.MEDICATION_STATUS_TAKEN
@@ -114,8 +116,12 @@ class HistoryViewModel(app: HealthLogApp) : AndroidViewModel(app) {
 
     fun deleteIntakeOutput(r: IntakeOutputRecord) {
         viewModelScope.launch {
+            if (r.time < DateUtils.todayStart()) {
+                UiFeedbackBus.show("今天 0 点前的出入量记录不允许删除")
+                return@launch
+            }
             intakeRepo.delete(r)
-            com.rooftop.healthlog.ui.components.UiFeedbackBus.showAction(
+            UiFeedbackBus.showAction(
                 text = "已删除记录",
                 action = "撤销"
             ) {

@@ -28,6 +28,7 @@ object MedicationReminderScheduler {
     const val EVENT_AUTO_MISSED = "auto_missed"
     private const val MISSED_DELAY_MS = 3L * 3600_000L
     private const val SNOOZE_DELAY_MS = 10L * 60_000L
+    private const val REMINDER_REPEAT_DELAY_MS = 30L * 60_000L
 
     /** 重新调度所有启用的时间点（取消旧的，再添加新的） */
     suspend fun rescheduleAll(context: Context) {
@@ -91,13 +92,30 @@ object MedicationReminderScheduler {
         scheduleOccurrence(context, scheduleId, time, nextDayMillis(time))
     }
 
-    /** 稍后提醒：在原时间点未处理的前提下，10 分钟后再次提醒。 */
+    /** 用户点击“稍后提醒”后，10 分钟再提醒一次。 */
     fun scheduleSnooze(
         context: Context,
         scheduleId: Long,
         time: String,
         scheduledAt: Long,
         delayMs: Long = SNOOZE_DELAY_MS
+    ) {
+        scheduleReminderRepeat(
+            context = context,
+            scheduleId = scheduleId,
+            time = time,
+            scheduledAt = scheduledAt,
+            delayMs = delayMs
+        )
+    }
+
+    /** 半小时后再次提醒；若已接近自动漏服截止时间，则最多提醒到截止前。 */
+    fun scheduleReminderRepeat(
+        context: Context,
+        scheduleId: Long,
+        time: String,
+        scheduledAt: Long,
+        delayMs: Long = REMINDER_REPEAT_DELAY_MS
     ) {
         val latestReminderAt = scheduledAt + MISSED_DELAY_MS - 1_000L
         val now = System.currentTimeMillis()

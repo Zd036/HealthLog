@@ -73,7 +73,7 @@ fun MedicationConfirmSheet(
                 )
             ) {
                 Text(
-                    if (isOverdue) "标记为漏服" else "确认已服用",
+                    if (isOverdue) "标记为漏服" else "已服用",
                     fontSize = 18.sp,
                     color = Color.White
                 )

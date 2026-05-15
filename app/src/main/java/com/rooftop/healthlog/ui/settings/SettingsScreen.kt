@@ -128,14 +128,8 @@ fun SettingsScreen() {
             onDelete = vm::deleteCustomCategory
         )
 
-        StrongMedicationReminderSection(
-            enabled = settings.enableStrongMedicationReminder,
-            onToggle = { vm.setEnableStrongMedicationReminder(it) }
-        )
-
         ReminderPermissionSection(
             status = reminderPermissionStatus,
-            strongReminderEnabled = settings.enableStrongMedicationReminder,
             onRefresh = { vm.refreshReminderPermissionStatus() },
             onOpenNotifications = {
                 ctx.startActivity(ReminderPermissionHelper.notificationSettingsIntent(ctx).apply {
@@ -144,11 +138,6 @@ fun SettingsScreen() {
             },
             onOpenExactAlarm = {
                 ctx.startActivity(ReminderPermissionHelper.exactAlarmSettingsIntent(ctx).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                })
-            },
-            onOpenFullScreen = {
-                ctx.startActivity(ReminderPermissionHelper.fullScreenSettingsIntent(ctx).apply {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 })
             }
@@ -226,27 +215,21 @@ fun SettingsScreen() {
 @Composable
 private fun ReminderPermissionSection(
     status: ReminderPermissionStatus,
-    strongReminderEnabled: Boolean,
     onRefresh: () -> Unit,
     onOpenNotifications: () -> Unit,
     onOpenExactAlarm: () -> Unit,
-    onOpenFullScreen: () -> Unit,
 ) {
     BigCard {
         Text("服药提醒检查", style = MaterialTheme.typography.titleLarge)
         Spacer(Modifier.height(8.dp))
         Text(
-            if (status.allReady(requireFullScreen = strongReminderEnabled)) {
+            if (status.allReady) {
                 "后台提醒所需权限已开启。"
             } else {
-                if (strongReminderEnabled) {
-                    "如果 APP 退到后台后不提醒，通常是下面这些系统权限没开。"
-                } else {
-                    "普通提醒主要依赖通知权限和精确闹钟；全屏提醒仅在强提醒模式下需要。"
-                }
+                "如果 APP 退到后台后不提醒，请检查以下系统权限。"
             },
             style = MaterialTheme.typography.bodyLarge,
-            color = if (status.allReady(requireFullScreen = strongReminderEnabled)) SuccessGreen else HintGray
+            color = if (status.allReady) SuccessGreen else HintGray
         )
         Spacer(Modifier.height(12.dp))
         ReminderStatusRow(
@@ -261,13 +244,6 @@ private fun ReminderPermissionSection(
             ready = status.exactAlarmReady,
             buttonLabel = "去开启",
             onClick = onOpenExactAlarm
-        )
-        Spacer(Modifier.height(8.dp))
-        ReminderStatusRow(
-            label = if (strongReminderEnabled) "全屏提醒" else "全屏提醒（强提醒模式需要）",
-            ready = status.fullScreenReady,
-            buttonLabel = "去开启",
-            onClick = onOpenFullScreen
         )
         Spacer(Modifier.height(12.dp))
         OutlinedButton(
@@ -337,7 +313,7 @@ private fun FontSizeSection(isLarge: Boolean, onChange: (Boolean) -> Unit) {
         Spacer(Modifier.height(12.dp))
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             FontOptionRow("标准字体", !isLarge) { onChange(false) }
-            FontOptionRow("超大字体（推荐）", isLarge) { onChange(true) }
+            FontOptionRow("超大字体", isLarge) { onChange(true) }
         }
     }
 }
@@ -376,12 +352,6 @@ private fun CustomCategorySection(
 
     BigCard {
         Text("自定义出入量项目", style = MaterialTheme.typography.titleLarge)
-        Spacer(Modifier.height(4.dp))
-        Text(
-            "在这里维护摄入和排出的自定义项目。摄入项目按克记录并按含水量换算，排出项目按毫升记录。导入导出会包含这些内容。",
-            style = MaterialTheme.typography.bodyLarge,
-            color = HintGray
-        )
         Spacer(Modifier.height(12.dp))
         PrimaryBigButton(
             text = "新增自定义项目",
@@ -530,7 +500,7 @@ private fun IntakeOutputToggleSection(enabled: Boolean, onToggle: (Boolean) -> U
                 Text("开启出入量记录", style = MaterialTheme.typography.titleLarge)
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "关闭后，首页和历史将隐藏出入量相关内容，已有数据不会被删除。",
+                    "关闭后将隐藏出入量相关内容，不会删除已有数据。",
                     style = MaterialTheme.typography.bodyLarge, color = HintGray
                 )
             }
@@ -539,33 +509,6 @@ private fun IntakeOutputToggleSection(enabled: Boolean, onToggle: (Boolean) -> U
                 colors = SwitchDefaults.colors(
                     checkedThumbColor = BgWhite, checkedTrackColor = PrimaryBlue,
                     uncheckedThumbColor = BgWhite, uncheckedTrackColor = HintGray
-                )
-            )
-        }
-    }
-}
-
-@Composable
-private fun StrongMedicationReminderSection(enabled: Boolean, onToggle: (Boolean) -> Unit) {
-    BigCard {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text("强提醒模式", style = MaterialTheme.typography.titleLarge)
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "开启后，到点会直接弹出全屏提醒页，并在页内播放系统默认闹钟铃声。关闭时仅显示普通通知提醒。",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = HintGray
-                )
-            }
-            Switch(
-                checked = enabled,
-                onCheckedChange = onToggle,
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = BgWhite,
-                    checkedTrackColor = PrimaryBlue,
-                    uncheckedThumbColor = BgWhite,
-                    uncheckedTrackColor = HintGray
                 )
             )
         }

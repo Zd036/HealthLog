@@ -19,7 +19,7 @@ import com.rooftop.healthlog.data.local.entity.*
         AppSettings::class,
         CustomCategory::class
     ],
-    version = 7,
+    version = 8,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -151,7 +151,7 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        /** v5 → v6：新增强提醒模式开关，默认关闭。 */
+        /** v5 → v6：历史版本新增强提醒模式开关。 */
         val MIGRATION_5_6: Migration = object : Migration(5, 6) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(
@@ -177,6 +177,35 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** v7 → v8：删除已废弃的强提醒设置字段。 */
+        val MIGRATION_7_8: Migration = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS app_settings_new (
+                        id INTEGER NOT NULL PRIMARY KEY,
+                        fontSize TEXT NOT NULL,
+                        enableIntakeOutput INTEGER NOT NULL,
+                        intakeReminderTimes TEXT NOT NULL,
+                        outputReminderTimes TEXT NOT NULL,
+                        lastDismissedThreeDayAlertDate INTEGER NOT NULL DEFAULT 0
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
+                    INSERT INTO app_settings_new (
+                        id, fontSize, enableIntakeOutput, intakeReminderTimes, outputReminderTimes, lastDismissedThreeDayAlertDate
+                    )
+                    SELECT id, fontSize, enableIntakeOutput, intakeReminderTimes, outputReminderTimes, lastDismissedThreeDayAlertDate
+                    FROM app_settings
+                    """.trimIndent()
+                )
+                db.execSQL("DROP TABLE app_settings")
+                db.execSQL("ALTER TABLE app_settings_new RENAME TO app_settings")
+            }
+        }
+
         fun getInstance(context: Context): AppDatabase =
             INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -190,7 +219,8 @@ abstract class AppDatabase : RoomDatabase() {
                         MIGRATION_3_4,
                         MIGRATION_4_5,
                         MIGRATION_5_6,
-                        MIGRATION_6_7
+                        MIGRATION_6_7,
+                        MIGRATION_7_8
                     )
                     .fallbackToDestructiveMigration()
                     .build()

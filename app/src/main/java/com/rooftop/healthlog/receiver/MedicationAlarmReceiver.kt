@@ -26,9 +26,9 @@ import java.util.Calendar
  *
  * 由 AlarmManager 在精确时间唤起：
  * 1. 校验该时间点今天是否已处理（taken/missed），避免重复提醒
- * 2. 发送高优先级通知（铃声+震动+全屏意图）
- * 3. 尝试启动全屏 Activity（前台时可弹出；后台/锁屏时由全屏意图托底）
- * 4. 为同一时间点的明天再次设置闹钟（每日滚动）
+ * 2. 发送高优先级常驻通知（铃声+震动）
+ * 3. 若用户未处理，则每 30 分钟再次提醒；若用户点“稍后提醒”，则 10 分钟后再次提醒
+ * 4. 超过 3 小时仍未处理则自动标记漏服
  */
 class MedicationAlarmReceiver : BroadcastReceiver() {
 
@@ -73,8 +73,6 @@ class MedicationAlarmReceiver : BroadcastReceiver() {
             scheduledTime = scheduledAt
         ) > 0
         val hasMeds = app.medicationRepository.hasMedicationsForSchedule(scheduleId)
-        val strongReminderEnabled = app.settingsRepository.getOrDefault().enableStrongMedicationReminder
-
         when {
             !hasMeds -> {
                 cancelNotification(context, scheduleId)
@@ -96,12 +94,9 @@ class MedicationAlarmReceiver : BroadcastReceiver() {
                     context = context,
                     scheduleId = scheduleId,
                     time = time,
-                    scheduledAt = scheduledAt,
-                    strongReminderEnabled = strongReminderEnabled
+                    scheduledAt = scheduledAt
                 )
-                if (strongReminderEnabled) {
-                    tryStartFullScreen(context, scheduleId, time, scheduledAt, true)
-                }
+                MedicationReminderScheduler.scheduleReminderRepeat(context, scheduleId, time, scheduledAt)
             }
         }
     }
@@ -173,7 +168,7 @@ class MedicationAlarmReceiver : BroadcastReceiver() {
                     "服药提醒",
                     NotificationManager.IMPORTANCE_HIGH
                 ).apply {
-                    description = "按时服药提醒（支持通知快捷操作与可选强提醒）"
+                    description = "服药提醒"
                     enableVibration(true)
                     vibrationPattern = longArrayOf(0, 500, 500, 500)
                 }
@@ -187,7 +182,6 @@ class MedicationAlarmReceiver : BroadcastReceiver() {
         scheduleId: Long,
         time: String,
         scheduledAt: Long = scheduleTimeMillis(time),
-        strongReminderEnabled: Boolean
     ) {
         ensureChannel(context)
 
@@ -196,7 +190,6 @@ class MedicationAlarmReceiver : BroadcastReceiver() {
             putExtra(MedicationReminderActivity.EXTRA_SCHEDULE_ID, scheduleId)
             putExtra(MedicationReminderActivity.EXTRA_TIME, time)
             putExtra(MedicationReminderActivity.EXTRA_SCHEDULED_AT, scheduledAt)
-            putExtra(MedicationReminderActivity.EXTRA_STRONG_REMINDER, strongReminderEnabled)
         }
         val reminderPi = PendingIntent.getActivity(
             context,
@@ -231,12 +224,12 @@ class MedicationAlarmReceiver : BroadcastReceiver() {
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle("⏰ $time 服药时间到")
-            .setContentText("可直接在通知中标记已服用，或稍后 10 分钟再提醒")
+            .setContentText("请按时服药，或选择10分钟后再次提醒")
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setAutoCancel(false)
-            .setOngoing(false)
+            .setOngoing(true)
             .setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION))
             .setVibrate(longArrayOf(0, 500, 500, 500))
             .setContentIntent(reminderPi)
@@ -250,37 +243,12 @@ class MedicationAlarmReceiver : BroadcastReceiver() {
                 "稍后提醒",
                 snoozePi
             )
-        if (strongReminderEnabled) {
-            builder.setFullScreenIntent(reminderPi, true)
-        }
         val notif = builder.build()
 
         try {
             NotificationManagerCompat.from(context).notify(notificationId(scheduleId), notif)
         } catch (_: SecurityException) {
             // 无 POST_NOTIFICATIONS 权限时忽略
-        }
-    }
-
-    /** 尝试启动全屏 Activity（前台允许；后台依赖 setFullScreenIntent） */
-    private fun tryStartFullScreen(
-        context: Context,
-        scheduleId: Long,
-        time: String,
-        scheduledAt: Long,
-        strongReminderEnabled: Boolean
-    ) {
-        try {
-            val i = Intent(context, MedicationReminderActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                putExtra(MedicationReminderActivity.EXTRA_SCHEDULE_ID, scheduleId)
-                putExtra(MedicationReminderActivity.EXTRA_TIME, time)
-                putExtra(MedicationReminderActivity.EXTRA_SCHEDULED_AT, scheduledAt)
-                putExtra(MedicationReminderActivity.EXTRA_STRONG_REMINDER, strongReminderEnabled)
-            }
-            context.startActivity(i)
-        } catch (_: Throwable) {
-            // 后台禁止启动 Activity 时由全屏通知接管
         }
     }
 

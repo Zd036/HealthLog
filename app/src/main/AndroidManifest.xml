@@ -45,8 +45,6 @@
             android:exported="false"
             android:excludeFromRecents="true"
             android:launchMode="singleTop"
-            android:showOnLockScreen="true"
-            android:turnScreenOn="true"
             android:theme="@style/Theme.HealthLog.Reminder" />
 
         <!-- 修改点2：用药提醒广播接收器（由 AlarmManager 唤起） -->

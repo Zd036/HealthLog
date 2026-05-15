@@ -5,7 +5,7 @@ import com.rooftop.healthlog.data.local.entity.MedicationRecord
 
 /**
  * 用药提醒动作处理：
- * - 通知按钮与全屏提醒页都复用同一套写库逻辑
+ * - 通知按钮与提醒详情页都复用同一套写库逻辑
  * - 仍以 scheduleId + scheduledAt 做幂等控制，避免重复标记
  */
 object MedicationReminderActionHandler {

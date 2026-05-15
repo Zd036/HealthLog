@@ -58,11 +58,12 @@ fun LazyListScope.intakeOutputList(
 @Composable
 private fun IntakeOutputListItem(r: IntakeOutputRecord, onDelete: (IntakeOutputRecord) -> Unit) {
     var showConfirm by remember { mutableStateOf(false) }
+    val canDelete = r.time >= DateUtils.todayStart()
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp)
-            .clickable(onClick = { showConfirm = true }),
+            .clickable(enabled = canDelete, onClick = { showConfirm = true }),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = BgWhite)
     ) {
@@ -97,10 +98,13 @@ private fun IntakeOutputListItem(r: IntakeOutputRecord, onDelete: (IntakeOutputR
                 if (r.note.isNotBlank()) {
                     Text(r.note, style = MaterialTheme.typography.bodyMedium, color = HintGray)
                 }
+                if (!canDelete) {
+                    Text("今天 0 点前的记录不允许删除", style = MaterialTheme.typography.bodyMedium, color = HintGray)
+                }
             }
         }
     }
-    if (showConfirm) {
+    if (showConfirm && canDelete) {
         AlertDialog(
             onDismissRequest = { showConfirm = false },
             title = { Text("删除记录", style = MaterialTheme.typography.headlineMedium) },
