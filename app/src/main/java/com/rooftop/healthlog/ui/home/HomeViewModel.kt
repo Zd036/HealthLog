@@ -53,9 +53,9 @@ class HomeViewModel(app: HealthLogApp) : AndroidViewModel(app) {
     // 额外的可变状态（不进入 combine，避免重组风暴）
     private val _clickedSchedule = MutableStateFlow<PendingSchedule?>(null)
 
-    private val threeDayImbalanceFlow: Flow<Boolean> = flow {
+    private val threeDayExcessIntakeFlow: Flow<Boolean> = flow {
         while (true) {
-            emit(computeThreeDayImbalance())
+            emit(computeThreeDayExcessIntake())
             kotlinx.coroutines.delay(60_000L)
         }
     }
@@ -72,7 +72,7 @@ class HomeViewModel(app: HealthLogApp) : AndroidViewModel(app) {
             ) { r, alertWindowVitals, m ->
                 Triple(r, alertWindowVitals, m)
             },
-            combine(threeDayImbalanceFlow, settingsRepo.settings) { b, s -> b to s },
+            combine(threeDayExcessIntakeFlow, settingsRepo.settings) { b, s -> b to s },
             _clickedSchedule
         ) { (records, alertWindowVitals, medPair), (threeDayBad, settings), clicked ->
             val (schedules, done) = medPair
@@ -210,7 +210,7 @@ class HomeViewModel(app: HealthLogApp) : AndroidViewModel(app) {
         return Triple(intake, output, stool)
     }
 
-    private suspend fun computeThreeDayImbalance(): Boolean {
+    private suspend fun computeThreeDayExcessIntake(): Boolean {
         for (offset in 0..2) {
             val start = DateUtils.daysAgoStart(offset)
             val end = start + 24L * 3600 * 1000
@@ -222,7 +222,7 @@ class HomeViewModel(app: HealthLogApp) : AndroidViewModel(app) {
                 else if (r.type == "output" && r.category != "大便") output += r.amount
             }
             val diff = intake - output
-            if (diff <= 1000f && diff >= -1000f) return false
+            if (diff <= 500f) return false
         }
         return true
     }

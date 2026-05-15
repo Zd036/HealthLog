@@ -34,7 +34,6 @@ import java.util.*
 fun IntakeOutputScreen(startWithIntake: Boolean, onClose: () -> Unit) {
     val vm: IntakeOutputViewModel = appViewModel()
     val state by vm.state.collectAsStateWithLifecycle()
-    var showCustomDialog by remember { mutableStateOf(false) }
 
     // 修改点2：每次进入页面时重置输入状态，确保时间戳不被缓存
     LaunchedEffect(startWithIntake) {
@@ -86,7 +85,7 @@ fun IntakeOutputScreen(startWithIntake: Boolean, onClose: () -> Unit) {
                 ) {
                     Text("选择类型", style = MaterialTheme.typography.titleMedium)
                     Spacer(Modifier.height(8.dp))
-                    val categories = vm.categoryList(state.isIntake) + "自定义"
+                    val categories = vm.categoryList(state.isIntake)
                     LazyVerticalGrid(
                         columns = GridCells.Fixed(3),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -108,10 +107,7 @@ fun IntakeOutputScreen(startWithIntake: Boolean, onClose: () -> Unit) {
                                         if (selected) PrimaryBlue else BorderGray,
                                         RoundedCornerShape(12.dp)
                                     )
-                                    .clickable {
-                                        if (c == "自定义") showCustomDialog = true
-                                        else vm.setCategory(c)
-                                    },
+                                    .clickable { vm.setCategory(c) },
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
@@ -141,17 +137,6 @@ fun IntakeOutputScreen(startWithIntake: Boolean, onClose: () -> Unit) {
             }
         }
     }
-
-    if (showCustomDialog) {
-        CustomCategoryDialog(
-            isIntake = state.isIntake,
-            onDismiss = { showCustomDialog = false },
-            onConfirm = { name, pct ->
-                vm.addCustomCategory(name, pct, state.isIntake)
-                showCustomDialog = false
-            }
-        )
-    }
 }
 
 @Composable
@@ -159,16 +144,17 @@ private fun InputArea(vm: IntakeOutputViewModel, state: IOInputState) {
     val isStool = vm.isStool(state.category)
     val isLiquid = vm.isLiquid(state.category)
     val isSolid = vm.isSolid(state.category)
+    val isCustomIntake = state.isIntake && vm.isCustom(state.category, intake = true)
 
     val unitText = when {
         isStool -> "次"
         isLiquid -> "毫升 (ml)"
-        isSolid -> "克 (g)"
+        isSolid || isCustomIntake -> "克 (g)"
         else -> "毫升 (ml)"
     }
     val tip = when {
         isStool -> "请输入次数（整数）"
-        isSolid -> "输入克数，将按含水量自动换算"
+        isSolid || isCustomIntake -> "输入克数，将按含水量自动换算"
         else -> "请输入毫升数"
     }
     Text(tip, style = MaterialTheme.typography.bodyMedium, color = HintGray)
@@ -186,7 +172,7 @@ private fun InputArea(vm: IntakeOutputViewModel, state: IOInputState) {
             .heightIn(min = 56.dp),
         textStyle = MaterialTheme.typography.titleLarge
     )
-    if (isSolid) {
+    if (isSolid || isCustomIntake) {
         val pct = vm.waterPercent(state.category)
         if (pct != null) {
             Spacer(Modifier.height(4.dp))
@@ -242,52 +228,3 @@ private fun QuickPickButton(text: String, onClick: () -> Unit) {
         Text(text, style = MaterialTheme.typography.titleMedium)
     }
 }
-
-@Composable
-private fun CustomCategoryDialog(
-    isIntake: Boolean,
-    onDismiss: () -> Unit,
-    onConfirm: (name: String, waterPct: Float) -> Unit
-) {
-    var name by remember { mutableStateOf("") }
-    var pctStr by remember { mutableStateOf("80") }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Text(
-                if (isIntake) "添加摄入类型" else "添加排出类型",
-                style = MaterialTheme.typography.headlineMedium
-            )
-        },
-        text = {
-            Column {
-                OutlinedTextField(
-                    value = name, onValueChange = { name = it },
-                    label = { Text("名称") }, modifier = Modifier.fillMaxWidth()
-                )
-                Spacer(Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = pctStr, onValueChange = { pctStr = it.filter { ch -> ch.isDigit() } },
-                    label = { Text("含水量 % (0-100)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = {
-                val p = pctStr.toFloatOrNull() ?: 80f
-                if (name.isNotBlank()) onConfirm(name.trim(), p)
-            }) { Text("确定", style = MaterialTheme.typography.titleLarge) }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(
-                    "取消",
-                    style = MaterialTheme.typography.titleLarge
-                )
-            }
-        }
-    )
-}
-

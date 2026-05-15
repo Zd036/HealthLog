@@ -21,7 +21,7 @@ import com.rooftop.healthlog.ui.theme.PrimaryBlue
 import com.rooftop.healthlog.utils.DateUtils
 
 @Composable
-fun HistoryScreen(onOpenCompliance: () -> Unit = {}) { // 保留参数避免破坏调用方
+fun HistoryScreen() {
     val vm: HistoryViewModel = appViewModel()
     val settingsVm: SettingsViewModel = appViewModel()
     val settings by settingsVm.settings.collectAsStateWithLifecycle()

@@ -10,6 +10,7 @@ import com.rooftop.healthlog.data.local.entity.Medication
 import com.rooftop.healthlog.data.local.entity.MedicationRecord
 import com.rooftop.healthlog.data.local.entity.MedicationSchedule
 import com.rooftop.healthlog.data.local.entity.VitalSignsRecord
+import com.rooftop.healthlog.data.local.entity.CustomCategory
 import com.rooftop.healthlog.ui.history.HistoryViewModel
 import java.io.File
 import java.io.FileOutputStream
@@ -39,6 +40,7 @@ object CsvExporter {
         val medRecords: List<MedicationRecord>,
         val schedules: List<MedicationSchedule>,
         val medications: List<Medication>,
+        val customCategories: List<CustomCategory>,
     )
 
     /** 导出全量数据，成功返回展示路径（如 "/Download/healthlog/xxx.csv"），失败返回 null */
@@ -95,6 +97,22 @@ object CsvExporter {
                 val value = if (r.amount == r.amount.toInt().toFloat())
                     r.amount.toInt().toString() else r.amount.toString()
                 w.appendLine("$date,$time,$type,${esc(r.category)},$value,,,${esc(r.note)}")
+            }
+            w.appendLine()
+
+            // 自定义出入量类型
+            w.appendLine("===== 自定义出入量类型 =====")
+            w.appendLine("类型,名称,含水量(%)")
+            for (item in data.customCategories) {
+                val type = if (item.type == "intake") "摄入" else "排出"
+                val waterPercent = if (item.type == "output") {
+                    ""
+                } else if (item.waterPercent == item.waterPercent.toInt().toFloat()) {
+                    item.waterPercent.toInt().toString()
+                } else {
+                    item.waterPercent.toString()
+                }
+                w.appendLine("$type,${esc(item.name)},$waterPercent")
             }
             w.appendLine()
 

@@ -43,8 +43,11 @@ interface IntakeOutputDao {
     @Insert
     suspend fun insertCategory(c: CustomCategory): Long
 
-    @Query("SELECT * FROM custom_categories WHERE type=:type")
+    @Query("SELECT * FROM custom_categories WHERE type=:type ORDER BY id ASC")
     fun getCategories(type: String): Flow<List<CustomCategory>>
+
+    @Query("SELECT * FROM custom_categories ORDER BY type ASC, id ASC")
+    fun getAllCategories(): Flow<List<CustomCategory>>
 
     @Delete
     suspend fun deleteCategory(c: CustomCategory)

@@ -21,6 +21,7 @@ data class IOInputState(
 class IntakeOutputViewModel(app: HealthLogApp) : AndroidViewModel(app) {
 
     private val repo: IntakeOutputRepository = app.intakeOutputRepository
+    private var customCategoryMap: Map<String, CustomCategory> = emptyMap()
 
     private val _state = MutableStateFlow(IOInputState())
     val state: StateFlow<IOInputState> = _state
@@ -31,6 +32,7 @@ class IntakeOutputViewModel(app: HealthLogApp) : AndroidViewModel(app) {
             combine(repo.getCategories("intake"), repo.getCategories("output")) { i, o ->
                 i + o
             }.collect { list ->
+                customCategoryMap = list.associateBy { "${it.type}:${it.name}" }
                 _state.update { it.copy(customCategories = list) }
             }
         }
@@ -78,6 +80,8 @@ class IntakeOutputViewModel(app: HealthLogApp) : AndroidViewModel(app) {
     fun isLiquid(category: String): Boolean = repo.liquidCategories.contains(category)
     fun isSolid(category: String): Boolean = repo.solidCategories.contains(category)
     fun isStool(category: String): Boolean = category == "大便"
+    fun isCustom(category: String, intake: Boolean): Boolean =
+        customCategoryMap.containsKey("${if (intake) "intake" else "output"}:$category")
 
     /** 含水量 (%) */
     fun waterPercent(category: String): Float? {
@@ -97,6 +101,10 @@ class IntakeOutputViewModel(app: HealthLogApp) : AndroidViewModel(app) {
                 val pct = waterPercent(s.category) ?: 80f
                 raw * pct / 100f // 克数 × 含水量
             }
+            s.isIntake && isCustom(s.category, intake = true) -> {
+                val pct = waterPercent(s.category) ?: 80f
+                raw * pct / 100f
+            }
             else -> raw
         }
     }
@@ -114,18 +122,6 @@ class IntakeOutputViewModel(app: HealthLogApp) : AndroidViewModel(app) {
         viewModelScope.launch {
             repo.insert(rec)
             onDone()
-        }
-    }
-
-    fun addCustomCategory(name: String, waterPct: Float, intake: Boolean) {
-        viewModelScope.launch {
-            repo.addCategory(
-                CustomCategory(
-                    type = if (intake) "intake" else "output",
-                    name = name,
-                    waterPercent = waterPct.coerceIn(0f, 100f)
-                )
-            )
         }
     }
 }

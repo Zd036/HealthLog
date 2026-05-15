@@ -11,7 +11,6 @@ import com.rooftop.healthlog.ui.medication.MedicationViewModel
 import com.rooftop.healthlog.ui.vitalsigns.VitalSignsViewModel
 import com.rooftop.healthlog.ui.history.HistoryViewModel
 import com.rooftop.healthlog.ui.settings.SettingsViewModel
-import com.rooftop.healthlog.ui.compliance.ComplianceReportViewModel
 
 /** 简单的 VM Factory，所有 VM 都需要 Application */
 class AppVMFactory(private val app: HealthLogApp) : ViewModelProvider.Factory {
@@ -24,7 +23,6 @@ class AppVMFactory(private val app: HealthLogApp) : ViewModelProvider.Factory {
             modelClass.isAssignableFrom(MedicationViewModel::class.java) -> MedicationViewModel(app) as T
             modelClass.isAssignableFrom(HistoryViewModel::class.java) -> HistoryViewModel(app) as T
             modelClass.isAssignableFrom(SettingsViewModel::class.java) -> SettingsViewModel(app) as T
-            modelClass.isAssignableFrom(ComplianceReportViewModel::class.java) -> ComplianceReportViewModel(app) as T
             else -> throw IllegalArgumentException("Unknown VM: ${modelClass.name}")
         }
     }

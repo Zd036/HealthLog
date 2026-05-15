@@ -4,10 +4,13 @@ import android.content.Intent
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -19,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import com.rooftop.healthlog.data.local.entity.CustomCategory
 import com.rooftop.healthlog.ui.appViewModel
 import com.rooftop.healthlog.ui.components.BigCard
 import com.rooftop.healthlog.ui.components.PrimaryBigButton
@@ -31,6 +35,7 @@ import com.rooftop.healthlog.utils.ReminderPermissionStatus
 fun SettingsScreen() {
     val vm: SettingsViewModel = appViewModel()
     val settings by vm.settings.collectAsStateWithLifecycle()
+    val customCategories by vm.customCategories.collectAsStateWithLifecycle()
     val exporting by vm.exporting.collectAsStateWithLifecycle()
     val importing by vm.importing.collectAsStateWithLifecycle()
     val exportResult by vm.exportResult.collectAsStateWithLifecycle()
@@ -86,7 +91,8 @@ fun SettingsScreen() {
                     append("\n格式错误：${r.skippedInvalid} 条")
                     append(
                         "\n明细：出入量 ${r.intakeAdded}，体征 ${r.vitalsAdded}，" +
-                            "服药记录 ${r.medRecordsAdded}，用药设置 ${r.medSettingsAdded}"
+                            "服药记录 ${r.medRecordsAdded}，用药设置 ${r.medSettingsAdded}，" +
+                            "自定义项目 ${r.customCategoriesAdded}"
                     )
                 }
             }
@@ -114,8 +120,22 @@ fun SettingsScreen() {
             onToggle = { vm.setEnableIntakeOutput(it) }
         )
 
+        CustomCategorySection(
+            categories = customCategories,
+            onAdd = { name, waterPercent, intake, onResult ->
+                vm.addCustomCategory(name, waterPercent, intake, onResult)
+            },
+            onDelete = vm::deleteCustomCategory
+        )
+
+        StrongMedicationReminderSection(
+            enabled = settings.enableStrongMedicationReminder,
+            onToggle = { vm.setEnableStrongMedicationReminder(it) }
+        )
+
         ReminderPermissionSection(
             status = reminderPermissionStatus,
+            strongReminderEnabled = settings.enableStrongMedicationReminder,
             onRefresh = { vm.refreshReminderPermissionStatus() },
             onOpenNotifications = {
                 ctx.startActivity(ReminderPermissionHelper.notificationSettingsIntent(ctx).apply {
@@ -206,6 +226,7 @@ fun SettingsScreen() {
 @Composable
 private fun ReminderPermissionSection(
     status: ReminderPermissionStatus,
+    strongReminderEnabled: Boolean,
     onRefresh: () -> Unit,
     onOpenNotifications: () -> Unit,
     onOpenExactAlarm: () -> Unit,
@@ -215,13 +236,17 @@ private fun ReminderPermissionSection(
         Text("服药提醒检查", style = MaterialTheme.typography.titleLarge)
         Spacer(Modifier.height(8.dp))
         Text(
-            if (status.allReady) {
+            if (status.allReady(requireFullScreen = strongReminderEnabled)) {
                 "后台提醒所需权限已开启。"
             } else {
-                "如果 APP 退到后台后不提醒，通常是下面这些系统权限没开。"
+                if (strongReminderEnabled) {
+                    "如果 APP 退到后台后不提醒，通常是下面这些系统权限没开。"
+                } else {
+                    "普通提醒主要依赖通知权限和精确闹钟；全屏提醒仅在强提醒模式下需要。"
+                }
             },
             style = MaterialTheme.typography.bodyLarge,
-            color = if (status.allReady) SuccessGreen else HintGray
+            color = if (status.allReady(requireFullScreen = strongReminderEnabled)) SuccessGreen else HintGray
         )
         Spacer(Modifier.height(12.dp))
         ReminderStatusRow(
@@ -239,7 +264,7 @@ private fun ReminderPermissionSection(
         )
         Spacer(Modifier.height(8.dp))
         ReminderStatusRow(
-            label = "全屏提醒",
+            label = if (strongReminderEnabled) "全屏提醒" else "全屏提醒（强提醒模式需要）",
             ready = status.fullScreenReady,
             buttonLabel = "去开启",
             onClick = onOpenFullScreen
@@ -323,7 +348,7 @@ private fun FontOptionRow(label: String, selected: Boolean, onClick: () -> Unit)
         onClick = onClick,
         shape = RoundedCornerShape(12.dp),
         color = if (selected) PrimaryBlue.copy(alpha = 0.08f) else Color.Transparent,
-        border = androidx.compose.foundation.BorderStroke(
+        border = BorderStroke(
             1.dp, if (selected) PrimaryBlue else BorderGray
         ),
         modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)
@@ -337,6 +362,164 @@ private fun FontOptionRow(label: String, selected: Boolean, onClick: () -> Unit)
             Text(label, style = MaterialTheme.typography.titleMedium)
         }
     }
+}
+
+@Composable
+private fun CustomCategorySection(
+    categories: List<CustomCategory>,
+    onAdd: (String, Float, Boolean, (String?) -> Unit) -> Unit,
+    onDelete: (CustomCategory) -> Unit,
+) {
+    var showAddDialog by remember { mutableStateOf(false) }
+    val intakeItems = remember(categories) { categories.filter { it.type == "intake" } }
+    val outputItems = remember(categories) { categories.filter { it.type == "output" } }
+
+    BigCard {
+        Text("自定义出入量项目", style = MaterialTheme.typography.titleLarge)
+        Spacer(Modifier.height(4.dp))
+        Text(
+            "在这里维护摄入和排出的自定义项目。摄入项目按克记录并按含水量换算，排出项目按毫升记录。导入导出会包含这些内容。",
+            style = MaterialTheme.typography.bodyLarge,
+            color = HintGray
+        )
+        Spacer(Modifier.height(12.dp))
+        PrimaryBigButton(
+            text = "新增自定义项目",
+            onClick = { showAddDialog = true },
+            color = PrimaryBlue
+        )
+        Spacer(Modifier.height(12.dp))
+        CategoryGroup(
+            title = "摄入",
+            categories = intakeItems,
+            onDelete = onDelete
+        )
+        Spacer(Modifier.height(12.dp))
+        CategoryGroup(
+            title = "排出",
+            categories = outputItems,
+            onDelete = onDelete
+        )
+    }
+
+    if (showAddDialog) {
+        AddCustomCategoryDialog(
+            onDismiss = { showAddDialog = false },
+            onConfirm = { name, waterPercent, intake ->
+                onAdd(name, waterPercent, intake) { error ->
+                    if (error == null) {
+                        showAddDialog = false
+                        UiFeedbackBus.show("已新增自定义项目")
+                    } else {
+                        UiFeedbackBus.show(error)
+                    }
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun CategoryGroup(
+    title: String,
+    categories: List<CustomCategory>,
+    onDelete: (CustomCategory) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(title, style = MaterialTheme.typography.titleMedium)
+        if (categories.isEmpty()) {
+            Text("暂无自定义项目", style = MaterialTheme.typography.bodyLarge, color = HintGray)
+        } else {
+            categories.forEach { item ->
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, BorderGray),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(item.name, style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                if (item.type == "intake") "含水量 ${item.waterPercent.toInt()}%" else "排出项目",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = HintGray
+                            )
+                        }
+                        IconButton(onClick = { onDelete(item) }) {
+                            Icon(
+                                Icons.Filled.Delete,
+                                contentDescription = "删除${item.name}",
+                                tint = DangerRed
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AddCustomCategoryDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (String, Float, Boolean) -> Unit,
+) {
+    var isIntake by remember { mutableStateOf(true) }
+    var name by remember { mutableStateOf("") }
+    var waterPercent by remember { mutableStateOf("80") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("新增自定义项目", style = MaterialTheme.typography.headlineMedium) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = isIntake,
+                        onClick = { isIntake = true },
+                        label = { Text("摄入", style = MaterialTheme.typography.bodyLarge) }
+                    )
+                    FilterChip(
+                        selected = !isIntake,
+                        onClick = { isIntake = false },
+                        label = { Text("排出", style = MaterialTheme.typography.bodyLarge) }
+                    )
+                }
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("名称") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                if (isIntake) {
+                    OutlinedTextField(
+                        value = waterPercent,
+                        onValueChange = { waterPercent = it.filter { ch -> ch.isDigit() || ch == '.' } },
+                        label = { Text("含水量 % (0-100)") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    onConfirm(name, waterPercent.toFloatOrNull() ?: 80f, isIntake)
+                }
+            ) {
+                Text("确定", style = MaterialTheme.typography.titleLarge)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("取消", style = MaterialTheme.typography.titleLarge)
+            }
+        }
+    )
 }
 
 @Composable
@@ -356,6 +539,33 @@ private fun IntakeOutputToggleSection(enabled: Boolean, onToggle: (Boolean) -> U
                 colors = SwitchDefaults.colors(
                     checkedThumbColor = BgWhite, checkedTrackColor = PrimaryBlue,
                     uncheckedThumbColor = BgWhite, uncheckedTrackColor = HintGray
+                )
+            )
+        }
+    }
+}
+
+@Composable
+private fun StrongMedicationReminderSection(enabled: Boolean, onToggle: (Boolean) -> Unit) {
+    BigCard {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("强提醒模式", style = MaterialTheme.typography.titleLarge)
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "开启后，到点会直接弹出全屏提醒页，并在页内播放系统默认闹钟铃声。关闭时仅显示普通通知提醒。",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = HintGray
+                )
+            }
+            Switch(
+                checked = enabled,
+                onCheckedChange = onToggle,
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = BgWhite,
+                    checkedTrackColor = PrimaryBlue,
+                    uncheckedThumbColor = BgWhite,
+                    uncheckedTrackColor = HintGray
                 )
             )
         }

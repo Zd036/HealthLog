@@ -9,6 +9,7 @@ import com.rooftop.healthlog.data.local.entity.Medication
 import com.rooftop.healthlog.data.local.entity.MedicationRecord
 import com.rooftop.healthlog.data.local.entity.MedicationSchedule
 import com.rooftop.healthlog.data.local.entity.VitalSignsRecord
+import com.rooftop.healthlog.data.local.entity.CustomCategory
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import java.io.BufferedReader
@@ -59,11 +60,17 @@ object CsvImporter {
         val method: String,
     )
 
+    private data class CustomCategoryKey(
+        val type: String,
+        val name: String,
+    )
+
     data class ImportResult(
         val intakeAdded: Int = 0,
         val vitalsAdded: Int = 0,
         val medRecordsAdded: Int = 0,
         val medSettingsAdded: Int = 0,
+        val customCategoriesAdded: Int = 0,
         val importedCount: Int = 0,
         val skippedDuplicates: Int = 0,
         val skippedInvalid: Int = 0,
@@ -106,6 +113,7 @@ object CsvImporter {
         var vitalsAdded = 0
         var medAdded = 0
         var settingAdded = 0
+        var customCategoryAdded = 0
         var duplicates = 0
         val existingIntakeKeys = app.intakeOutputRepository.getAllRecordsForExport()
             .first()
@@ -113,6 +121,9 @@ object CsvImporter {
         val existingVitalKeys = app.vitalSignsRepository.getAllRecordsForExport()
             .first()
             .mapTo(mutableSetOf(), ::vitalDuplicateKey)
+        val existingCustomCategoryKeys = app.intakeOutputRepository.getAllCategories()
+            .first()
+            .mapTo(mutableSetOf(), ::customCategoryKey)
 
         // ---- 出入量记录：按导出后的“日期时间(分钟) + 类型 + 类别 + 数值”去重 ----
         for (record in parsed.intake) {
@@ -129,6 +140,16 @@ object CsvImporter {
             if (existingVitalKeys.add(vitalDuplicateKey(record))) {
                 app.vitalSignsRepository.insert(record)
                 vitalsAdded++
+            } else {
+                duplicates++
+            }
+        }
+
+        // ---- 自定义出入量类型：按“类型 + 名称”去重 ----
+        for (category in parsed.customCategories) {
+            if (existingCustomCategoryKeys.add(customCategoryKey(category))) {
+                app.intakeOutputRepository.addCategory(category)
+                customCategoryAdded++
             } else {
                 duplicates++
             }
@@ -239,12 +260,13 @@ object CsvImporter {
             }
         }
 
-        val importedCount = intakeAdded + vitalsAdded + medAdded + settingAdded
+        val importedCount = intakeAdded + vitalsAdded + medAdded + settingAdded + customCategoryAdded
         return ImportResult(
             intakeAdded = intakeAdded,
             vitalsAdded = vitalsAdded,
             medRecordsAdded = medAdded,
             medSettingsAdded = settingAdded,
+            customCategoriesAdded = customCategoryAdded,
             importedCount = importedCount,
             skippedDuplicates = duplicates,
             skippedInvalid = parsed.invalidCount,
@@ -294,10 +316,15 @@ object CsvImporter {
         val vitals: List<VitalSignsRecord>,
         val medRecords: List<RawMedRecord>,
         val settings: List<RawSetting>,
+        val customCategories: List<CustomCategory>,
         val invalidCount: Int,
     ) {
         val allEmpty: Boolean
-            get() = intake.isEmpty() && vitals.isEmpty() && medRecords.isEmpty() && settings.isEmpty()
+            get() = intake.isEmpty() &&
+                vitals.isEmpty() &&
+                medRecords.isEmpty() &&
+                settings.isEmpty() &&
+                customCategories.isEmpty()
     }
 
     private data class RawMedRecord(
@@ -328,6 +355,7 @@ object CsvImporter {
         val vitals = mutableListOf<VitalSignsRecord>()
         val medRecs = mutableListOf<RawMedRecord>()
         val settings = mutableListOf<RawSetting>()
+        val customCategories = mutableListOf<CustomCategory>()
         var invalid = 0
 
         val stream = context.contentResolver.openInputStream(uri)
@@ -340,6 +368,7 @@ object CsvImporter {
                     val line = stripBom(rawLine).trimEnd('\r')
                     when {
                         line.startsWith("===== 出入量记录") -> { section = "intake"; headerSkipped = false }
+                        line.startsWith("===== 自定义出入量类型") -> { section = "customCategories"; headerSkipped = false }
                         line.startsWith("===== 体征记录") -> { section = "vitals"; headerSkipped = false }
                         line.startsWith("===== 服药记录") -> { section = "medrec"; headerSkipped = false }
                         line.startsWith("===== 用药设置") -> { section = "settings"; headerSkipped = false }
@@ -353,6 +382,7 @@ object CsvImporter {
                             try {
                                 when (section) {
                                     "intake" -> parseIntake(cols)?.let(intake::add) ?: run { invalid++ }
+                                    "customCategories" -> parseCustomCategory(cols)?.let(customCategories::add) ?: run { invalid++ }
                                     "vitals" -> parseVitals(cols)?.let(vitals::add) ?: run { invalid++ }
                                     "medrec" -> parseMedRec(cols)?.let(medRecs::add) ?: run { invalid++ }
                                     "settings" -> parseSetting(cols)?.let(settings::add) ?: run { invalid++ }
@@ -366,7 +396,7 @@ object CsvImporter {
                 }
             }
         }
-        return ParsedCsv(intake, vitals, medRecs, settings, invalid)
+        return ParsedCsv(intake, vitals, medRecs, settings, customCategories, invalid)
     }
 
     private fun stripBom(line: String): String =
@@ -450,6 +480,28 @@ object CsvImporter {
             bloodSugar = bs,
             note = note,
             time = ts
+        )
+    }
+
+    private fun parseCustomCategory(c: List<String>): CustomCategory? {
+        if (c.size < 3) return null
+        val type = when (c[0].trim()) {
+            "摄入" -> "intake"
+            "排出" -> "output"
+            else -> return null
+        }
+        val name = c[1].trim()
+        if (name.isBlank()) return null
+        val rawWaterPercent = c[2].trim()
+        val waterPercent = if (type == "output") {
+            rawWaterPercent.toFloatOrNull() ?: 0f
+        } else {
+            rawWaterPercent.toFloatOrNull() ?: return null
+        }
+        return CustomCategory(
+            type = type,
+            name = name,
+            waterPercent = waterPercent.coerceIn(0f, 100f)
         )
     }
 
@@ -599,4 +651,10 @@ object CsvImporter {
 
     private fun formatSpecification(value: Float): String =
         if (value > 0f) String.format(Locale.CHINA, "%.0f", value) else ""
+
+    private fun customCategoryKey(category: CustomCategory): CustomCategoryKey =
+        CustomCategoryKey(
+            type = category.type.trim(),
+            name = category.name.trim()
+        )
 }

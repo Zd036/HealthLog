@@ -18,7 +18,10 @@ data class ReminderPermissionStatus(
     val fullScreenReady: Boolean,
 ) {
     val allReady: Boolean
-        get() = notificationsReady && exactAlarmReady && fullScreenReady
+        get() = allReady(requireFullScreen = true)
+
+    fun allReady(requireFullScreen: Boolean): Boolean =
+        notificationsReady && exactAlarmReady && (!requireFullScreen || fullScreenReady)
 }
 
 object ReminderPermissionHelper {

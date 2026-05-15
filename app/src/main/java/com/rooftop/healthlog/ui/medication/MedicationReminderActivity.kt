@@ -26,13 +26,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.lifecycleScope
+import androidx.core.app.NotificationManagerCompat
 import com.rooftop.healthlog.HealthLogApp
 import com.rooftop.healthlog.data.local.entity.Medication
-import com.rooftop.healthlog.data.local.entity.MedicationRecord
 import com.rooftop.healthlog.ui.components.UiFeedbackBus
 import com.rooftop.healthlog.ui.theme.HealthLogTheme
 import com.rooftop.healthlog.ui.theme.SuccessGreen
-import com.rooftop.healthlog.utils.MEDICATION_STATUS_TAKEN
+import com.rooftop.healthlog.utils.MedicationReminderActionHandler
 import com.rooftop.healthlog.worker.MedicationReminderScheduler
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -41,9 +41,9 @@ import java.util.Calendar
 /**
  * 全屏用药提醒 Activity：
  * - 半透明黑色背景，覆盖整个屏幕
- * - 响铃 5 秒 + 震动
+ * - 强提醒模式下响铃 5 秒 + 震动
  * - 屏幕常亮直到点击"已服用"
- * - 不允许跳过
+ * - 支持稍后 10 分钟再次提醒
  */
 class MedicationReminderActivity : ComponentActivity() {
 
@@ -51,6 +51,7 @@ class MedicationReminderActivity : ComponentActivity() {
         const val EXTRA_SCHEDULE_ID = "scheduleId"
         const val EXTRA_TIME = "time"
         const val EXTRA_SCHEDULED_AT = "scheduledAt"
+        const val EXTRA_STRONG_REMINDER = "strongReminder"
     }
 
     private var ringtone: android.media.Ringtone? = null
@@ -75,29 +76,48 @@ class MedicationReminderActivity : ComponentActivity() {
         val scheduleId = intent.getLongExtra(EXTRA_SCHEDULE_ID, -1L)
         val time = intent.getStringExtra(EXTRA_TIME) ?: "00:00"
         val scheduledAt = intent.getLongExtra(EXTRA_SCHEDULED_AT, scheduleTimeMillis(time))
+        val strongReminderEnabled = intent.getBooleanExtra(EXTRA_STRONG_REMINDER, false)
         if (scheduleId == -1L) { finish(); return }
 
-        startRingAndVibrate()
+        if (strongReminderEnabled) {
+            startRingAndVibrate()
+        }
 
         setContent {
             HealthLogTheme {
                 ReminderContent(
                     scheduleId = scheduleId,
                     time = time,
+                    strongReminderEnabled = strongReminderEnabled,
                     onEmpty = {
                         lifecycleScope.launch {
+                            cancelReminderNotification(scheduleId)
                             stopRingAndVibrate()
                             finish()
                         }
                     },
                     onTaken = { meds ->
                         lifecycleScope.launch {
-                            val inserted = recordTaken(scheduleId, scheduledAt, meds)
+                            val inserted = recordTaken(scheduleId, scheduledAt)
                             if (!inserted) {
                                 stopRingAndVibrate()
                                 finish()
                                 return@launch
                             }
+                            cancelReminderNotification(scheduleId)
+                            stopRingAndVibrate()
+                            finish()
+                        }
+                    },
+                    onSnooze = {
+                        lifecycleScope.launch {
+                            MedicationReminderScheduler.scheduleSnooze(
+                                context = this@MedicationReminderActivity,
+                                scheduleId = scheduleId,
+                                time = time,
+                                scheduledAt = scheduledAt
+                            )
+                            cancelReminderNotification(scheduleId)
                             stopRingAndVibrate()
                             finish()
                         }
@@ -143,32 +163,19 @@ class MedicationReminderActivity : ComponentActivity() {
     }
 
     /** 修改点2：全屏提醒确认服药也按时间点防重复，不再处理库存字段。 */
-    private suspend fun recordTaken(scheduleId: Long, scheduledAt: Long, meds: List<Medication>): Boolean {
+    private suspend fun recordTaken(scheduleId: Long, scheduledAt: Long): Boolean {
         val app = applicationContext as HealthLogApp
-        val now = System.currentTimeMillis()
-        val records = meds.map { m ->
-            MedicationRecord(
-                scheduleId = scheduleId,
-                medicationId = m.id,
-                medicationName = m.name,
-                dosage = m.dosage,
-                unit = m.unit,
-                scheduledTime = scheduledAt,
-                actualTime = now,
-                status = MEDICATION_STATUS_TAKEN
-            )
-        }
-        val inserted = app.medicationRepository.insertRecordsIfNotRecorded(
-            scheduleId = scheduleId,
-            scheduledTime = scheduledAt,
-            records = records
-        )
+        val inserted = MedicationReminderActionHandler.markTaken(app, scheduleId, scheduledAt)
         if (!inserted) {
             UiFeedbackBus.show("该时间点药品已标记，不可重复操作")
             return false
         }
         MedicationReminderScheduler.rescheduleAll(app)
         return inserted
+    }
+
+    private fun cancelReminderNotification(scheduleId: Long) {
+        NotificationManagerCompat.from(this).cancel(scheduleId.toInt())
     }
 
     override fun onBackPressed() {
@@ -198,8 +205,10 @@ private fun scheduleTimeMillis(time: String): Long {
 private fun ReminderContent(
     scheduleId: Long,
     time: String,
+    strongReminderEnabled: Boolean,
     onEmpty: () -> Unit,
-    onTaken: (List<Medication>) -> Unit
+    onTaken: (List<Medication>) -> Unit,
+    onSnooze: () -> Unit
 ) {
     var meds by remember { mutableStateOf<List<Medication>>(emptyList()) }
     LaunchedEffect(scheduleId) {
@@ -244,7 +253,11 @@ private fun ReminderContent(
                             style = MaterialTheme.typography.titleLarge)
                     }
                     Text(
-                        "服用完成后，直接点击下方“已服用”。",
+                        if (strongReminderEnabled) {
+                            "强提醒已开启。服用完成后点击“已服用”，或稍后 10 分钟再提醒。"
+                        } else {
+                            "服用完成后，直接点击下方“已服用”，或选择稍后提醒。"
+                        },
                         style = MaterialTheme.typography.titleMedium
                     )
                     Text(
@@ -263,6 +276,13 @@ private fun ReminderContent(
             ) {
                 Text("已服用", fontSize = 22.sp, color = Color.White,
                     fontWeight = FontWeight.Bold)
+            }
+            OutlinedButton(
+                onClick = onSnooze,
+                modifier = Modifier.fillMaxWidth().height(56.dp),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text("10 分钟后提醒", fontSize = 20.sp, fontWeight = FontWeight.Bold)
             }
         }
     }

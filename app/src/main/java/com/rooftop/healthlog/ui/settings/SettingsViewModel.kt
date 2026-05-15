@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.rooftop.healthlog.HealthLogApp
 import com.rooftop.healthlog.data.local.entity.AppSettings
+import com.rooftop.healthlog.data.local.entity.CustomCategory
 import com.rooftop.healthlog.utils.CsvExporter
 import com.rooftop.healthlog.utils.CsvImporter
 import com.rooftop.healthlog.utils.ReminderPermissionHelper
@@ -22,9 +23,16 @@ import kotlinx.coroutines.withContext
 
 class SettingsViewModel(private val app: HealthLogApp) : AndroidViewModel(app) {
 
+    private val intakeRepo = app.intakeOutputRepository
+
     val settings: StateFlow<AppSettings> =
         app.settingsRepository.settings.stateIn(
             viewModelScope, SharingStarted.Eagerly, AppSettings()
+        )
+
+    val customCategories: StateFlow<List<CustomCategory>> =
+        intakeRepo.getAllCategories().stateIn(
+            viewModelScope, SharingStarted.Eagerly, emptyList()
         )
 
     private val _exporting = MutableStateFlow(false)
@@ -54,6 +62,12 @@ class SettingsViewModel(private val app: HealthLogApp) : AndroidViewModel(app) {
         viewModelScope.launch { app.settingsRepository.setEnableIntakeOutput(enabled) }
     }
 
+    fun setEnableStrongMedicationReminder(enabled: Boolean) {
+        viewModelScope.launch {
+            app.settingsRepository.setEnableStrongMedicationReminder(enabled)
+        }
+    }
+
     /** 修改点1：全量导出到 Download/healthlog/ */
     fun exportAll() {
         if (_exporting.value) return
@@ -67,6 +81,7 @@ class SettingsViewModel(private val app: HealthLogApp) : AndroidViewModel(app) {
                         medRecords = app.medicationRepository.getAllRecordsForExport().first(),
                         schedules = app.medicationRepository.getAllSchedules().first(),
                         medications = app.medicationRepository.getAllMedications().first(),
+                        customCategories = intakeRepo.getAllCategories().first(),
                     )
                     CsvExporter.exportAll(app, data)
                         ?: throw IllegalStateException("写入文件失败")
@@ -104,6 +119,46 @@ class SettingsViewModel(private val app: HealthLogApp) : AndroidViewModel(app) {
     }
 
     fun consumeImportResult() { _importResult.value = null }
+
+    fun addCustomCategory(
+        name: String,
+        waterPercent: Float,
+        intake: Boolean,
+        onResult: (String?) -> Unit,
+    ) {
+        val trimmedName = name.trim()
+        if (trimmedName.isEmpty()) {
+            onResult("名称不能为空")
+            return
+        }
+        val builtin = if (intake) intakeRepo.intakeCategories else intakeRepo.outputCategories
+        if (builtin.any { it == trimmedName }) {
+            onResult("名称与内置项目重复")
+            return
+        }
+        val type = if (intake) "intake" else "output"
+        val duplicated = customCategories.value.any { it.type == type && it.name.trim() == trimmedName }
+        if (duplicated) {
+            onResult("该类型已存在同名项目")
+            return
+        }
+        viewModelScope.launch {
+            intakeRepo.addCategory(
+                CustomCategory(
+                    type = type,
+                    name = trimmedName,
+                    waterPercent = if (intake) waterPercent.coerceIn(0f, 100f) else 0f
+                )
+            )
+            onResult(null)
+        }
+    }
+
+    fun deleteCustomCategory(category: CustomCategory) {
+        viewModelScope.launch {
+            intakeRepo.deleteCategory(category)
+        }
+    }
 }
 
 data class ExportResult(val displayPath: String, val error: String? = null)

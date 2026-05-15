@@ -61,6 +61,8 @@ class IntakeOutputRepository(private val dao: IntakeOutputDao) {
 
     suspend fun addCategory(c: CustomCategory) = dao.insertCategory(c)
     fun getCategories(type: String): Flow<List<CustomCategory>> = dao.getCategories(type)
+    suspend fun deleteCategory(c: CustomCategory) = dao.deleteCategory(c)
+    fun getAllCategories(): Flow<List<CustomCategory>> = dao.getAllCategories()
 
     /** 导入时按业务字段判断重复。 */
     suspend fun countDuplicate(record: IntakeOutputRecord): Int =

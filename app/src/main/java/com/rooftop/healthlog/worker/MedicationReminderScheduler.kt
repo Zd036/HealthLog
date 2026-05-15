@@ -27,6 +27,7 @@ object MedicationReminderScheduler {
     const val EVENT_REMINDER = "reminder"
     const val EVENT_AUTO_MISSED = "auto_missed"
     private const val MISSED_DELAY_MS = 3L * 3600_000L
+    private const val SNOOZE_DELAY_MS = 10L * 60_000L
 
     /** 重新调度所有启用的时间点（取消旧的，再添加新的） */
     suspend fun rescheduleAll(context: Context) {
@@ -88,6 +89,29 @@ object MedicationReminderScheduler {
     /** 服用完成后，为同一时间点的"明天"再设置一次（保证持续滚动） */
     fun scheduleNextDay(context: Context, scheduleId: Long, time: String) {
         scheduleOccurrence(context, scheduleId, time, nextDayMillis(time))
+    }
+
+    /** 稍后提醒：在原时间点未处理的前提下，10 分钟后再次提醒。 */
+    fun scheduleSnooze(
+        context: Context,
+        scheduleId: Long,
+        time: String,
+        scheduledAt: Long,
+        delayMs: Long = SNOOZE_DELAY_MS
+    ) {
+        val latestReminderAt = scheduledAt + MISSED_DELAY_MS - 1_000L
+        val now = System.currentTimeMillis()
+        val triggerAt = minOf(now + delayMs, latestReminderAt)
+        if (triggerAt <= now) return
+        setAlarmAt(
+            context = context,
+            scheduleId = scheduleId,
+            time = time,
+            triggerAt = triggerAt,
+            eventType = EVENT_REMINDER,
+            scheduledAt = scheduledAt,
+            useAlarmClock = false
+        )
     }
 
     private fun nextDayMillis(time: String, now: Long = System.currentTimeMillis()): Long {

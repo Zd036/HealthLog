@@ -61,12 +61,13 @@ class HealthLogApp : Application(), Configuration.Provider {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             nm.deleteNotificationChannel(LEGACY_CHANNEL_REMINDER)
+            nm.deleteNotificationChannel(LEGACY_CHANNEL_REMINDER_V2)
             val ch = NotificationChannel(
                 MedicationAlarmReceiver.CHANNEL_ID,
                 "服药提醒",
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
-                description = "按时服药提醒（高优先级，支持锁屏与全屏）"
+                description = "按时服药提醒（支持通知快捷操作与可选强提醒）"
                 enableVibration(true)
                 vibrationPattern = longArrayOf(0, 500, 500, 500)
             }
@@ -76,6 +77,7 @@ class HealthLogApp : Application(), Configuration.Provider {
 
     companion object {
         private const val LEGACY_CHANNEL_REMINDER = "medication_reminder"
+        private const val LEGACY_CHANNEL_REMINDER_V2 = "medication_reminder_v2"
         lateinit var instance: HealthLogApp
             private set
     }

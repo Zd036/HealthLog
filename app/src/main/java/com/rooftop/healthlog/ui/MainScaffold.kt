@@ -34,7 +34,6 @@ import com.rooftop.healthlog.ui.settings.SettingsScreen
 import com.rooftop.healthlog.ui.settings.SettingsViewModel
 import com.rooftop.healthlog.ui.intakeoutput.IntakeOutputScreen
 import com.rooftop.healthlog.ui.vitalsigns.VitalSignsScreen
-import com.rooftop.healthlog.ui.compliance.ComplianceReportScreen
 import com.rooftop.healthlog.ui.components.UiFeedbackBus
 
 /** 主脚手架：4 个 Tab 页 + 中间大加号 + 顶层全屏子页面 */
@@ -107,9 +106,7 @@ fun MainScaffold(modifier: Modifier = Modifier) {
                         onRecordIntakeOutput = { intake -> sub = SubScreen.IntakeOutput(intake) },
                         onRecordVitalSigns = { sub = SubScreen.VitalSigns }
                     )
-                    MainTab.History -> HistoryScreen(
-                        onOpenCompliance = { sub = SubScreen.ComplianceReport }
-                    )
+                    MainTab.History -> HistoryScreen()
                     MainTab.Medication -> MedicationScreen()
                     MainTab.Settings -> SettingsScreen()
                 }
@@ -152,7 +149,6 @@ fun MainScaffold(modifier: Modifier = Modifier) {
                 onClose = { sub = SubScreen.None }
             )
             SubScreen.VitalSigns -> VitalSignsScreen(onClose = { sub = SubScreen.None })
-            SubScreen.ComplianceReport -> ComplianceReportScreen(onClose = { sub = SubScreen.None })
             SubScreen.None -> {}
         }
     }
@@ -171,7 +167,6 @@ sealed interface SubScreen {
     data object None : SubScreen
     data class IntakeOutput(val intake: Boolean) : SubScreen
     data object VitalSigns : SubScreen
-    data object ComplianceReport : SubScreen
 }
 
 /** 5 段底部导航：首页 / 历史 / [+大加号] / 用药 / 设置 */

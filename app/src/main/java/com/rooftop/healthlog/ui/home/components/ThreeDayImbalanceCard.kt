@@ -15,7 +15,7 @@ import com.rooftop.healthlog.ui.components.BigCard
 import com.rooftop.healthlog.ui.theme.AlertBg
 import com.rooftop.healthlog.ui.theme.DangerRed
 
-/** 连续 3 天出入量不平衡的强警告卡片 */
+/** 连续 3 天入量超标的强警告卡片 */
 @Composable
 fun ThreeDayImbalanceCard(onDismiss: () -> Unit) {
     BigCard(background = AlertBg) {
@@ -23,13 +23,13 @@ fun ThreeDayImbalanceCard(onDismiss: () -> Unit) {
             Icon(Icons.Filled.Warning, null, tint = DangerRed)
             Spacer(Modifier.width(8.dp))
             Text(
-                "连续 3 天出入量异常",
+                "连续入量超标",
                 style = MaterialTheme.typography.titleLarge.copy(color = DangerRed)
             )
         }
         Spacer(Modifier.height(8.dp))
         Text(
-            "您的出入量已连续3天超标，建议尽快就医检查",
+            "您的入量已连续3天超标，请控制饮食",
             style = MaterialTheme.typography.bodyLarge.copy(color = DangerRed)
         )
         Spacer(Modifier.height(8.dp))
