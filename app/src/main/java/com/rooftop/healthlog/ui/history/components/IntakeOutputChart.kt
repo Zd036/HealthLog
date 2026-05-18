@@ -29,7 +29,7 @@ fun IntakeOutputChart(records: List<IntakeOutputRecord>, days: Int) {
     val labelStyle = MaterialTheme.typography.labelMedium.copy(color = HintGray)
 
     Column(Modifier.fillMaxWidth()) {
-        Text("出入量差值趋势（排出 - 摄入，单位 ml）",
+        Text("出入量差值趋势（摄入 - 排出，单位 ml）",
             style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(8.dp))
         Canvas(modifier = Modifier.fillMaxWidth().height(200.dp)) {
@@ -55,9 +55,9 @@ fun IntakeOutputChart(records: List<IntakeOutputRecord>, days: Int) {
         Spacer(Modifier.height(6.dp))
         Legend(
             items = listOf(
-                SuccessGreen to "平衡(±500)",
-                WarningYellow to "警告(±1000)",
-                DangerRed to "超标"
+                SuccessGreen to "平衡(<200)",
+                WarningYellow to "异常(200~500)",
+                DangerRed to "超标(≥500)"
             )
         )
     }

@@ -23,10 +23,10 @@ import com.rooftop.healthlog.data.local.entity.Medication
 import com.rooftop.healthlog.ui.components.UiFeedbackBus
 import com.rooftop.healthlog.ui.theme.HealthLogTheme
 import com.rooftop.healthlog.ui.theme.SuccessGreen
+import com.rooftop.healthlog.utils.DateUtils
 import com.rooftop.healthlog.utils.MedicationReminderActionHandler
 import com.rooftop.healthlog.worker.MedicationReminderScheduler
 import kotlinx.coroutines.launch
-import java.util.Calendar
 
 /**
  * 通知点击后的用药提醒 Activity：
@@ -46,9 +46,23 @@ class MedicationReminderActivity : ComponentActivity() {
 
         val scheduleId = intent.getLongExtra(EXTRA_SCHEDULE_ID, -1L)
         val time = intent.getStringExtra(EXTRA_TIME) ?: "00:00"
-        val scheduledAt = intent.getLongExtra(EXTRA_SCHEDULED_AT, scheduleTimeMillis(time))
+        val scheduledAt = intent.getLongExtra(
+            EXTRA_SCHEDULED_AT,
+            DateUtils.scheduleTimeMillisOnDay(DateUtils.dayStartOf(System.currentTimeMillis()), time)
+        )
         if (scheduleId == -1L) { finish(); return }
 
+        lifecycleScope.launch {
+            if (isHandled(scheduleId, scheduledAt)) {
+                cancelReminderNotification(scheduleId)
+                finish()
+                return@launch
+            }
+            showReminderContent(scheduleId, time, scheduledAt)
+        }
+    }
+
+    private fun showReminderContent(scheduleId: Long, time: String, scheduledAt: Long) {
         setContent {
             HealthLogTheme {
                 ReminderContent(
@@ -64,6 +78,7 @@ class MedicationReminderActivity : ComponentActivity() {
                         lifecycleScope.launch {
                             val inserted = recordTaken(scheduleId, scheduledAt)
                             if (!inserted) {
+                                cancelReminderNotification(scheduleId)
                                 finish()
                                 return@launch
                             }
@@ -100,6 +115,11 @@ class MedicationReminderActivity : ComponentActivity() {
         return inserted
     }
 
+    private suspend fun isHandled(scheduleId: Long, scheduledAt: Long): Boolean {
+        val app = applicationContext as HealthLogApp
+        return app.medicationRepository.countRecordedTodayForSchedule(scheduleId, scheduledAt) > 0
+    }
+
     private fun cancelReminderNotification(scheduleId: Long) {
         NotificationManagerCompat.from(this).cancel(scheduleId.toInt())
     }
@@ -107,18 +127,6 @@ class MedicationReminderActivity : ComponentActivity() {
     override fun onBackPressed() {
         // 不允许跳过
     }
-}
-
-private fun scheduleTimeMillis(time: String): Long {
-    val parts = time.split(":")
-    val h = parts.getOrNull(0)?.toIntOrNull() ?: 0
-    val m = parts.getOrNull(1)?.toIntOrNull() ?: 0
-    return Calendar.getInstance().apply {
-        set(Calendar.HOUR_OF_DAY, h)
-        set(Calendar.MINUTE, m)
-        set(Calendar.SECOND, 0)
-        set(Calendar.MILLISECOND, 0)
-    }.timeInMillis
 }
 
 /** 提醒内容 */

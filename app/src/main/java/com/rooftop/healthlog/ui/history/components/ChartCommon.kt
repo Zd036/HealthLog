@@ -229,7 +229,7 @@ fun <T> bucketDaily(
     }
 }
 
-/** 聚合每日出入量差值（排出 - 摄入，非大便） */
+/** 聚合每日出入量差值（摄入 - 排出，非大便） */
 fun dailyIntakeOutputDiff(
     records: List<com.rooftop.healthlog.data.local.entity.IntakeOutputRecord>,
     dayStarts: List<Long>
@@ -246,18 +246,18 @@ fun dailyIntakeOutputDiff(
                 r.type == "output" && r.category != "大便" -> output += r.amount
             }
         }
-        output - intake
+        intake - output
     }
 }
 
-/** 根据差值计算颜色（±500 绿、±1000 黄、更多红） */
+/** 根据差值计算颜色（200 以下绿、500 以下黄、更多红） */
 fun intakeDiffColor(
     v: Float,
     green: Color,
     yellow: Color,
     red: Color
 ): Color = when {
-    kotlin.math.abs(v) <= 500f -> green
-    kotlin.math.abs(v) <= 1000f -> yellow
+    v < 200f -> green
+    v < 500f -> yellow
     else -> red
 }

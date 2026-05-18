@@ -349,7 +349,7 @@ private fun MedicationEditDialog(
     var unit by remember { mutableStateOf(medication.unit) }
     var spec by remember { mutableStateOf(if (medication.specification > 0) medication.specification.toString() else "") }
     var method by remember { mutableStateOf(medication.method) }
-    val units = listOf("片", "粒", "mg", "g", "ml")
+    val units = listOf("片", "揿", "ml")
 
     AlertDialog(
         onDismissRequest = onDismiss,

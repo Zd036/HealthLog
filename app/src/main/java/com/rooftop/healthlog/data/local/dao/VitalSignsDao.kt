@@ -18,10 +18,10 @@ interface VitalSignsDao {
     @Query("SELECT * FROM vital_signs_records ORDER BY time DESC LIMIT 1")
     fun getLatest(): Flow<VitalSignsRecord?>
 
-    @Query("SELECT * FROM vital_signs_records WHERE time BETWEEN :start AND :end ORDER BY time DESC")
+    @Query("SELECT * FROM vital_signs_records WHERE time >= :start AND time < :end ORDER BY time DESC")
     fun getBetween(start: Long, end: Long): Flow<List<VitalSignsRecord>>
 
-    @Query("SELECT * FROM vital_signs_records WHERE weight IS NOT NULL AND time BETWEEN :start AND :end ORDER BY time DESC LIMIT 1")
+    @Query("SELECT * FROM vital_signs_records WHERE weight IS NOT NULL AND time >= :start AND time < :end ORDER BY time DESC LIMIT 1")
     suspend fun getWeightInRange(start: Long, end: Long): VitalSignsRecord?
 
     @Query(

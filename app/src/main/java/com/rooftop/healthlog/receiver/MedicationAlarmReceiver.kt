@@ -13,13 +13,13 @@ import androidx.core.app.NotificationManagerCompat
 import com.rooftop.healthlog.HealthLogApp
 import com.rooftop.healthlog.R
 import com.rooftop.healthlog.ui.medication.MedicationReminderActivity
+import com.rooftop.healthlog.utils.DateUtils
 import com.rooftop.healthlog.utils.MedicationReminderActionHandler
 import com.rooftop.healthlog.worker.MedicationReminderScheduler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
-import java.util.Calendar
 
 /**
  * 修改点2：用药提醒 BroadcastReceiver。
@@ -63,7 +63,7 @@ class MedicationAlarmReceiver : BroadcastReceiver() {
             ?: MedicationReminderScheduler.EVENT_REMINDER
         val scheduledAt = intent.getLongExtra(
             MedicationReminderScheduler.EXTRA_SCHEDULED_AT,
-            scheduleTimeMillis(time)
+            DateUtils.scheduleTimeMillisOnDay(DateUtils.dayStartOf(System.currentTimeMillis()), time)
         )
         if (scheduleId == -1L) return
 
@@ -106,7 +106,7 @@ class MedicationAlarmReceiver : BroadcastReceiver() {
         val time = intent.getStringExtra(MedicationReminderScheduler.EXTRA_TIME) ?: return
         val scheduledAt = intent.getLongExtra(
             MedicationReminderScheduler.EXTRA_SCHEDULED_AT,
-            scheduleTimeMillis(time)
+            DateUtils.scheduleTimeMillisOnDay(DateUtils.dayStartOf(System.currentTimeMillis()), time)
         )
         if (scheduleId == -1L) return
 
@@ -128,7 +128,7 @@ class MedicationAlarmReceiver : BroadcastReceiver() {
         val time = intent.getStringExtra(MedicationReminderScheduler.EXTRA_TIME) ?: return
         val scheduledAt = intent.getLongExtra(
             MedicationReminderScheduler.EXTRA_SCHEDULED_AT,
-            scheduleTimeMillis(time)
+            DateUtils.scheduleTimeMillisOnDay(DateUtils.dayStartOf(System.currentTimeMillis()), time)
         )
         if (scheduleId == -1L) return
 
@@ -145,18 +145,6 @@ class MedicationAlarmReceiver : BroadcastReceiver() {
         }
 
         MedicationReminderScheduler.scheduleSnooze(context, scheduleId, time, scheduledAt)
-    }
-
-    private fun scheduleTimeMillis(time: String): Long {
-        val parts = time.split(":")
-        val h = parts.getOrNull(0)?.toIntOrNull() ?: 0
-        val m = parts.getOrNull(1)?.toIntOrNull() ?: 0
-        return Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, h)
-            set(Calendar.MINUTE, m)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-        }.timeInMillis
     }
 
     private fun ensureChannel(context: Context) {
@@ -181,7 +169,10 @@ class MedicationAlarmReceiver : BroadcastReceiver() {
         context: Context,
         scheduleId: Long,
         time: String,
-        scheduledAt: Long = scheduleTimeMillis(time),
+        scheduledAt: Long = DateUtils.scheduleTimeMillisOnDay(
+            DateUtils.dayStartOf(System.currentTimeMillis()),
+            time
+        ),
     ) {
         ensureChannel(context)
 

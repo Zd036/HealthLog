@@ -144,9 +144,10 @@ object ShareHelper {
                 io += ShareRow.Paragraph("总排出：$outputTotal ml$outputText", TEXT)
                 val diff = intakeTotal - outputTotal
                 val color = when {
-                    diff > 1000 || diff < -1000 -> DANGER
-                    diff in -500..500 -> SUCCESS
-                    else -> 0xFFFFC107.toInt()
+                    diff < 0 -> SUCCESS
+                    diff < 200 -> TEXT
+                    diff < 500 -> 0xFFFFC107.toInt()
+                    else -> DANGER
                 }
                 val sign = if (diff >= 0) "+" else ""
                 io += ShareRow.Paragraph("差值：$sign$diff ml", color)

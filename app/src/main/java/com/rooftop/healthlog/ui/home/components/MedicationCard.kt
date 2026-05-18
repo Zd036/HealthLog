@@ -123,10 +123,9 @@ private fun timeLabel(time: String): String {
 }
 
 private fun scheduleSummary(p: PendingSchedule): String {
-    val base = when (p.status) {
+    return when (p.status) {
         MedicationSlotStatus.PENDING -> "待处理"
         MedicationSlotStatus.TAKEN -> medicationStatusLabel(MEDICATION_STATUS_TAKEN)
         MedicationSlotStatus.MISSED -> medicationStatusLabel(MEDICATION_STATUS_MISSED)
     }
-    return "$base · ${p.medications.joinToString("、") { it.name }}"
 }

@@ -10,7 +10,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rooftop.healthlog.ui.home.PendingSchedule
 import com.rooftop.healthlog.ui.theme.HintGray
-import java.util.Calendar
 
 /** 服药确认 BottomSheet（修改点5） */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -22,8 +21,7 @@ fun MedicationConfirmSheet(
     onConfirmMissed: () -> Unit
 ) {
     val now = System.currentTimeMillis()
-    val scheduledMillis = scheduleTimeMillis(pending.schedule.time)
-    val diffMs = now - scheduledMillis
+    val diffMs = now - pending.scheduledAt
     // 超过 3 小时 → 漏服；未到时间 → 禁用确认
     val isOverdue = diffMs > 3 * 3600 * 1000L
     val isEarly = diffMs < 0
@@ -43,6 +41,11 @@ fun MedicationConfirmSheet(
                 "${pending.schedule.time} 服药确认",
                 fontSize = 22.sp,
                 style = MaterialTheme.typography.headlineSmall
+            )
+            Text(
+                pending.medications.joinToString("、") { it.name },
+                style = MaterialTheme.typography.bodyLarge,
+                color = HintGray
             )
 
             // 状态提示
@@ -80,14 +83,4 @@ fun MedicationConfirmSheet(
             }
         }
     }
-}
-
-private fun scheduleTimeMillis(time: String): Long {
-    val parts = time.split(":")
-    val h = parts.getOrNull(0)?.toIntOrNull() ?: 0
-    val m = parts.getOrNull(1)?.toIntOrNull() ?: 0
-    return Calendar.getInstance().apply {
-        set(Calendar.HOUR_OF_DAY, h); set(Calendar.MINUTE, m)
-        set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
-    }.timeInMillis
 }

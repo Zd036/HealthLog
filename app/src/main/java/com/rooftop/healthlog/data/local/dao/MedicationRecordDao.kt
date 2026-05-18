@@ -16,10 +16,10 @@ interface MedicationRecordDao {
     @Update
     suspend fun update(record: MedicationRecord)
 
-    @Query("SELECT * FROM medication_records WHERE scheduledTime BETWEEN :start AND :end ORDER BY scheduledTime DESC")
+    @Query("SELECT * FROM medication_records WHERE scheduledTime >= :start AND scheduledTime < :end ORDER BY scheduledTime DESC")
     fun getBetween(start: Long, end: Long): Flow<List<MedicationRecord>>
 
-    @Query("SELECT * FROM medication_records WHERE scheduleId = :scheduleId AND scheduledTime BETWEEN :start AND :end")
+    @Query("SELECT * FROM medication_records WHERE scheduleId = :scheduleId AND scheduledTime >= :start AND scheduledTime < :end")
     suspend fun getByScheduleAndDay(scheduleId: Long, start: Long, end: Long): List<MedicationRecord>
 
     /** 历史页仅显示最近 500 条，避免全量加载影响滚动性能。 */

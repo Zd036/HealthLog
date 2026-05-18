@@ -58,7 +58,7 @@ fun WeightChart(records: List<VitalSignsRecord>, days: Int) {
                 lineColor = Color(0xFF9C27B0), normalDotColor = Color(0xFF9C27B0))
         }
         Spacer(Modifier.height(6.dp))
-        Legend(listOf(Color(0xFF9C27B0) to "体重", DangerRed to "24小时增加>=1斤"))
+        Legend(listOf(Color(0xFF9C27B0) to "体重", DangerRed to "24小时增加≥1斤"))
     }
 }
 

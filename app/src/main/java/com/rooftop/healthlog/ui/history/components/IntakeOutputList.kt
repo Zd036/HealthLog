@@ -98,9 +98,6 @@ private fun IntakeOutputListItem(r: IntakeOutputRecord, onDelete: (IntakeOutputR
                 if (r.note.isNotBlank()) {
                     Text(r.note, style = MaterialTheme.typography.bodyMedium, color = HintGray)
                 }
-                if (!canDelete) {
-                    Text("今天 0 点前的记录不允许删除", style = MaterialTheme.typography.bodyMedium, color = HintGray)
-                }
             }
         }
     }

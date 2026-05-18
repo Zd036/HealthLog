@@ -17,9 +17,10 @@ import com.rooftop.healthlog.utils.MEDICATION_STATUS_MISSED
 import com.rooftop.healthlog.utils.MEDICATION_STATUS_TAKEN
 import com.rooftop.healthlog.utils.RecentVitalItem
 import com.rooftop.healthlog.worker.MedicationReminderScheduler
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import java.util.Calendar
 
 /** 首页总状态 */
 data class HomeUiState(
@@ -41,6 +42,7 @@ enum class MedicationSlotStatus { PENDING, TAKEN, MISSED }
 data class PendingSchedule(
     val schedule: MedicationSchedule,
     val medications: List<Medication>,
+    val scheduledAt: Long,
     val status: MedicationSlotStatus
 )
 
@@ -54,6 +56,22 @@ class HomeViewModel(app: HealthLogApp) : AndroidViewModel(app) {
     // 额外的可变状态（不进入 combine，避免重组风暴）
     private val _clickedSchedule = MutableStateFlow<PendingSchedule?>(null)
 
+    private val currentDayStartFlow: Flow<Long> = flow {
+        while (currentCoroutineContext().isActive) {
+            val now = System.currentTimeMillis()
+            val todayStart = DateUtils.dayStartOf(now)
+            emit(todayStart)
+            val tomorrowStart = DateUtils.dayRangeOf(now).second
+            kotlinx.coroutines.delay((tomorrowStart - now).coerceAtLeast(1L))
+        }
+    }.distinctUntilChanged()
+
+    private val todayRecordsFlow: Flow<List<IntakeOutputRecord>> =
+        currentDayStartFlow.flatMapLatest { dayStart ->
+            val dayEnd = DateUtils.dayRangeOf(dayStart).second
+            intakeRepo.records(dayStart, dayEnd)
+        }
+
     private val threeDayExcessIntakeFlow: Flow<Boolean> = flow {
         while (true) {
             emit(computeThreeDayExcessIntake())
@@ -62,12 +80,15 @@ class HomeViewModel(app: HealthLogApp) : AndroidViewModel(app) {
     }
 
     private val vitalAlertWindowFlow: Flow<List<VitalSignsRecord>> =
-        vitalsRepo.between(DateUtils.daysAgoStart(1), dayRange().second)
+        currentDayStartFlow.flatMapLatest { dayStart ->
+            val dayEnd = DateUtils.dayRangeOf(dayStart).second
+            vitalsRepo.between(DateUtils.daysAgoStart(1), dayEnd)
+        }
 
     val uiState: StateFlow<HomeUiState> =
         combine(
             combine(
-                intakeRepo.todayRecords(),
+                todayRecordsFlow,
                 vitalAlertWindowFlow,
                 todayMedicationStateFlow()
             ) { r, alertWindowVitals, m ->
@@ -78,11 +99,11 @@ class HomeViewModel(app: HealthLogApp) : AndroidViewModel(app) {
         ) { (records, alertWindowVitals, medPair), (threeDayBad, settings), clicked ->
             val (schedules, done) = medPair
             val (intakeSum, outputSum, stool) = aggregate(records)
-            val todayStart = DateUtils.todayStart()
+            val todayStart = DateUtils.dayStartOf(System.currentTimeMillis())
             val todayVitals = alertWindowVitals.filter { it.time >= todayStart }
             val recentVitals = buildRecentVitalItems(todayVitals, alertWindowVitals)
-            val alerts = buildAlerts(intakeSum, outputSum, alertWindowVitals)
-            val dismissedToday = settings.lastDismissedThreeDayAlertDate == DateUtils.todayStart()
+            val alerts = buildAlerts(records, alertWindowVitals)
+            val dismissedToday = settings.lastDismissedThreeDayAlertDate == todayStart
             HomeUiState(
                 totalIntake = intakeSum,
                 totalOutput = outputSum,
@@ -98,15 +119,14 @@ class HomeViewModel(app: HealthLogApp) : AndroidViewModel(app) {
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), HomeUiState())
 
     fun dismissThreeDayAlertToday() {
-        viewModelScope.launch { settingsRepo.setThreeDayAlertDismissed(DateUtils.todayStart()) }
+        viewModelScope.launch { settingsRepo.setThreeDayAlertDismissed(DateUtils.dayStartOf(System.currentTimeMillis())) }
     }
 
     /** 用户点击某个待服时间点 */
     fun onScheduleClick(pending: PendingSchedule) {
         viewModelScope.launch {
-            val scheduledMillis = scheduleTimeMillis(pending.schedule.time)
             // 修改点2：BottomSheet 弹出前先校验该时间点今天是否已处理。
-            if (medRepo.countRecordedTodayForSchedule(pending.schedule.id, scheduledMillis) > 0 ||
+            if (medRepo.countRecordedTodayForSchedule(pending.schedule.id, pending.scheduledAt) > 0 ||
                 pending.status != MedicationSlotStatus.PENDING
             ) {
                 _clickedSchedule.value = null
@@ -123,7 +143,6 @@ class HomeViewModel(app: HealthLogApp) : AndroidViewModel(app) {
     fun confirmTaken(pending: PendingSchedule) {
         viewModelScope.launch {
             val now = System.currentTimeMillis()
-            val scheduledMillis = scheduleTimeMillis(pending.schedule.time)
             val records = pending.medications.map { med ->
                 MedicationRecord(
                     scheduleId = pending.schedule.id,
@@ -131,7 +150,7 @@ class HomeViewModel(app: HealthLogApp) : AndroidViewModel(app) {
                     medicationName = med.name,
                     dosage = med.dosage,
                     unit = med.unit,
-                    scheduledTime = scheduledMillis,
+                    scheduledTime = pending.scheduledAt,
                     actualTime = now,
                     status = MEDICATION_STATUS_TAKEN
                 )
@@ -139,7 +158,7 @@ class HomeViewModel(app: HealthLogApp) : AndroidViewModel(app) {
             // 修改点2：数据层再次以时间点粒度防重复，taken/missed 任一已存在都拒绝。
             val inserted = medRepo.insertRecordsIfNotRecorded(
                 pending.schedule.id,
-                scheduledMillis,
+                pending.scheduledAt,
                 records
             )
             if (!inserted) {
@@ -158,7 +177,6 @@ class HomeViewModel(app: HealthLogApp) : AndroidViewModel(app) {
     /** 标记漏服：与已服用完全一致，同样走时间点级别的防重复逻辑。 */
     fun confirmMissed(pending: PendingSchedule) {
         viewModelScope.launch {
-            val scheduledMillis = scheduleTimeMillis(pending.schedule.time)
             val records = pending.medications.map { med ->
                 MedicationRecord(
                     scheduleId = pending.schedule.id,
@@ -166,14 +184,14 @@ class HomeViewModel(app: HealthLogApp) : AndroidViewModel(app) {
                     medicationName = med.name,
                     dosage = med.dosage,
                     unit = med.unit,
-                    scheduledTime = scheduledMillis,
+                    scheduledTime = pending.scheduledAt,
                     actualTime = null,
                     status = MEDICATION_STATUS_MISSED
                 )
             }
             val inserted = medRepo.insertRecordsIfNotRecorded(
                 pending.schedule.id,
-                scheduledMillis,
+                pending.scheduledAt,
                 records
             )
             if (!inserted) {
@@ -186,19 +204,6 @@ class HomeViewModel(app: HealthLogApp) : AndroidViewModel(app) {
             _clickedSchedule.value = null
             UiFeedbackBus.show("已标记为漏服")
         }
-    }
-
-    /** 将 "HH:mm" 转为今日对应的毫秒时间戳 */
-    private fun scheduleTimeMillis(time: String): Long {
-        val parts = time.split(":")
-        val h = parts.getOrNull(0)?.toIntOrNull() ?: 0
-        val m = parts.getOrNull(1)?.toIntOrNull() ?: 0
-        return Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, h)
-            set(Calendar.MINUTE, m)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-        }.timeInMillis
     }
 
     private fun aggregate(records: List<IntakeOutputRecord>): Triple<Float, Float, Int> {
@@ -219,65 +224,69 @@ class HomeViewModel(app: HealthLogApp) : AndroidViewModel(app) {
             val end = start + 24L * 3600 * 1000
             val records = intakeRepo.records(start, end).first()
             if (records.isEmpty()) return false
-            var intake = 0f; var output = 0f
-            for (r in records) {
-                if (r.type == "intake") intake += r.amount
-                else if (r.type == "output" && r.category != "大便") output += r.amount
-            }
-            val diff = intake - output
+            val diff = intakeMinusOutput(records)
             if (diff <= 500f) return false
         }
         return true
     }
 
     private fun buildAlerts(
-        intake: Float,
-        output: Float,
+        records: List<IntakeOutputRecord>,
         alertWindowVitals: List<VitalSignsRecord>
     ): List<String> {
         val list = mutableListOf<String>()
-        val diff = intake - output
-        if (diff > 1000 || diff < -1000) list += "今日出入量差值超标（${diff.toInt()}ml），请注意"
+        val diff = currentIntakeOutputDiff(records)
+        if (diff != null && diff > 500f) list += "今日出入量差值超标（${diff.toInt()}ml），请注意"
         list += buildDailyVitalAlertMessages(alertWindowVitals)
         return list
     }
 
-    private fun todayMedicationStateFlow(): Flow<Pair<List<PendingSchedule>, Boolean>> {
-        val (dayStart, dayEnd) = dayRange()
-        return combine(
-            medRepo.getEnabledSchedules(),
-            medRepo.getRecordsBetween(dayStart, dayEnd)
-        ) { schedules, records ->
-            val slots = mutableListOf<PendingSchedule>()
-            for (schedule in schedules) {
-                val meds = medRepo.getMedicationsForScheduleSync(schedule.id)
-                if (meds.isEmpty()) continue
-                val scheduledMillis = scheduleTimeMillis(schedule.time)
-                val slotRecords = records.filter {
-                    it.scheduleId == schedule.id && it.scheduledTime == scheduledMillis
-                }
-                val status = when {
-                    slotRecords.any { it.status == MEDICATION_STATUS_MISSED } -> MedicationSlotStatus.MISSED
-                    slotRecords.any { it.status == MEDICATION_STATUS_TAKEN } -> MedicationSlotStatus.TAKEN
-                    else -> MedicationSlotStatus.PENDING
-                }
-                slots += PendingSchedule(
-                    schedule = schedule,
-                    medications = meds,
-                    status = status
-                )
-            }
-            slots to (slots.isNotEmpty() && slots.all { it.status != MedicationSlotStatus.PENDING })
-        }
+    private fun currentIntakeOutputDiff(records: List<IntakeOutputRecord>): Float? {
+        if (records.isEmpty()) return null
+        return intakeMinusOutput(records)
     }
 
-    private fun dayRange(): Pair<Long, Long> {
-        val cal = Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0)
-            set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+    private fun intakeMinusOutput(records: List<IntakeOutputRecord>): Float {
+        var intake = 0f
+        var output = 0f
+        for (r in records) {
+            when {
+                r.type == "intake" -> intake += r.amount
+                r.type == "output" && r.category != "大便" -> output += r.amount
+            }
         }
-        val start = cal.timeInMillis
-        cal.add(Calendar.DAY_OF_YEAR, 1)
-        return start to cal.timeInMillis
+        return intake - output
+    }
+
+    private fun todayMedicationStateFlow(): Flow<Pair<List<PendingSchedule>, Boolean>> {
+        return currentDayStartFlow.flatMapLatest { dayStart ->
+            val dayEnd = DateUtils.dayRangeOf(dayStart).second
+            combine(
+                medRepo.getEnabledSchedules(),
+                medRepo.getRecordsBetween(dayStart, dayEnd)
+            ) { schedules, records ->
+                val slots = mutableListOf<PendingSchedule>()
+                for (schedule in schedules) {
+                    val meds = medRepo.getMedicationsForScheduleSync(schedule.id)
+                    if (meds.isEmpty()) continue
+                    val scheduledAt = DateUtils.scheduleTimeMillisOnDay(dayStart, schedule.time)
+                    val slotRecords = records.filter {
+                        it.scheduleId == schedule.id && it.scheduledTime == scheduledAt
+                    }
+                    val status = when {
+                        slotRecords.any { it.status == MEDICATION_STATUS_MISSED } -> MedicationSlotStatus.MISSED
+                        slotRecords.any { it.status == MEDICATION_STATUS_TAKEN } -> MedicationSlotStatus.TAKEN
+                        else -> MedicationSlotStatus.PENDING
+                    }
+                    slots += PendingSchedule(
+                        schedule = schedule,
+                        medications = meds,
+                        scheduledAt = scheduledAt,
+                        status = status
+                    )
+                }
+                slots to (slots.isNotEmpty() && slots.all { it.status != MedicationSlotStatus.PENDING })
+            }
+        }
     }
 }

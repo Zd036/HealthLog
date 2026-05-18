@@ -46,6 +46,30 @@ object DateUtils {
         return c.timeInMillis
     }
 
+    /** 该自然日的 [start, end) 区间，end 为次日 00:00。 */
+    fun dayRangeOf(time: Long): Pair<Long, Long> {
+        val start = dayStartOf(time)
+        val end = Calendar.getInstance().apply {
+            timeInMillis = start
+            add(Calendar.DAY_OF_YEAR, 1)
+        }.timeInMillis
+        return start to end
+    }
+
+    /** 将 "HH:mm" 解析为指定自然日上的具体时间点。 */
+    fun scheduleTimeMillisOnDay(dayStart: Long, time: String): Long {
+        val parts = time.split(":")
+        val hour = parts.getOrNull(0)?.toIntOrNull() ?: 0
+        val minute = parts.getOrNull(1)?.toIntOrNull() ?: 0
+        return Calendar.getInstance().apply {
+            timeInMillis = dayStart
+            set(Calendar.HOUR_OF_DAY, hour)
+            set(Calendar.MINUTE, minute)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
+    }
+
     /** 下次目标时刻（hour:minute）的时间戳（若今日已过则为明日） */
     fun nextTriggerAt(hour: Int, minute: Int): Long {
         val now = System.currentTimeMillis()

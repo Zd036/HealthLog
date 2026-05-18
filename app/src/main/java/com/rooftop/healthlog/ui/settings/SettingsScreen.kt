@@ -220,11 +220,11 @@ private fun ReminderPermissionSection(
     onOpenExactAlarm: () -> Unit,
 ) {
     BigCard {
-        Text("服药提醒检查", style = MaterialTheme.typography.titleLarge)
+        Text("后台提醒权限", style = MaterialTheme.typography.titleLarge)
         Spacer(Modifier.height(8.dp))
         Text(
             if (status.allReady) {
-                "后台提醒所需权限已开启。"
+                "后台提醒（服药提醒）所需权限已开启。"
             } else {
                 "如果 APP 退到后台后不提醒，请检查以下系统权限。"
             },

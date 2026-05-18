@@ -38,9 +38,10 @@ fun IntakeOutputCard(
             Spacer(Modifier.height(6.dp))
             val diff = (state.totalIntake - state.totalOutput).toInt()
             val color: Color = when {
-                diff > 1000 || diff < -1000 -> DangerRed
-                diff in -500..500 -> SuccessGreen
-                else -> WarningYellow
+                diff < 0 -> SuccessGreen
+                diff < 200 -> TextDark
+                diff < 500 -> WarningYellow
+                else -> DangerRed
             }
             val sign = if (diff >= 0) "+" else ""
             Text(

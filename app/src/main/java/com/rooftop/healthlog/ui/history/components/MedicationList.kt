@@ -45,7 +45,9 @@ private fun MedicationItem(r: MedicationHistoryItem) {
         colors = CardDefaults.cardColors(containerColor = BgWhite)
     ) {
         Column(Modifier.padding(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.width(96.dp)) {
                     Text(
                         DateUtils.formatHm(r.scheduledTime),
@@ -57,14 +59,7 @@ private fun MedicationItem(r: MedicationHistoryItem) {
                         color = HintGray
                     )
                 }
-                Spacer(Modifier.width(8.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        r.medicationNames.joinToString("、"),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = HintGray
-                    )
-                }
+                Spacer(Modifier.weight(1f))
                 val chipColor = if (taken) SuccessGreen else DangerRed
                 AssistChip(
                     onClick = {},

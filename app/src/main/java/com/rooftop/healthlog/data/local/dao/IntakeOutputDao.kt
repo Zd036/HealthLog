@@ -17,7 +17,7 @@ interface IntakeOutputDao {
     suspend fun delete(record: IntakeOutputRecord)
 
     /** 按时间区间（如 7:00 - 次日 7:00） */
-    @Query("SELECT * FROM intake_output_records WHERE time BETWEEN :startTime AND :endTime ORDER BY time DESC")
+    @Query("SELECT * FROM intake_output_records WHERE time >= :startTime AND time < :endTime ORDER BY time DESC")
     fun getBetween(startTime: Long, endTime: Long): Flow<List<IntakeOutputRecord>>
 
     /** 历史页仅显示最近 500 条，避免全量加载影响滚动性能。 */

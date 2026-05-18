@@ -19,6 +19,7 @@ import com.rooftop.healthlog.ui.appViewModel
 import com.rooftop.healthlog.ui.components.UiFeedbackBus
 import com.rooftop.healthlog.ui.home.components.*
 import com.rooftop.healthlog.ui.settings.SettingsViewModel
+import com.rooftop.healthlog.ui.theme.PrimaryBlue
 import com.rooftop.healthlog.utils.ShareHelper
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -134,10 +135,18 @@ private fun TopBar(onShare: () -> Unit) {
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Text(dateStr, style = MaterialTheme.typography.headlineMedium)
-        // 分享图标按钮，点击区域 ≥ 48dp
-        IconButton(onClick = onShare, modifier = Modifier.size(48.dp)) {
-            Icon(Icons.Filled.Share, contentDescription = "分享当天记录",
-                modifier = Modifier.size(24.dp))
+        TextButton(onClick = onShare, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)) {
+            Icon(
+                Icons.Filled.Share,
+                contentDescription = "分享当天记录",
+                modifier = Modifier.size(20.dp),
+                tint = PrimaryBlue
+            )
+            Spacer(Modifier.width(4.dp))
+            Text(
+                "分享",
+                style = MaterialTheme.typography.titleMedium.copy(color = PrimaryBlue)
+            )
         }
     }
 }
