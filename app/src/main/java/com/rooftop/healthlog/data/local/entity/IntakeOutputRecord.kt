@@ -8,7 +8,7 @@ import androidx.room.PrimaryKey
 data class IntakeOutputRecord(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val type: String, // "intake" or "output"
-    val category: String, // "饮用水"、"尿液"、"大便"
+    val category: String, // "水/牛奶"、"尿液"、"大便"
     val amount: Float, // 毫升数或次数
     val time: Long,
     val note: String = ""

@@ -1,6 +1,9 @@
 package com.rooftop.healthlog.ui.home.components
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.WaterDrop
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -20,22 +23,17 @@ fun IntakeOutputCard(
     onOutput: () -> Unit
 ) {
     BigCard {
-        Text("今日出入量", style = MaterialTheme.typography.titleLarge)
-        Spacer(Modifier.height(12.dp))
+        HomeCardHeader(
+            title = "今日出入量",
+            accentColor = PrimaryBlue,
+            icon = Icons.Filled.WaterDrop
+        )
+        Spacer(Modifier.height(8.dp))
         if (!state.hasIntakeOutput) {
-            Text("今日暂无记录", style = MaterialTheme.typography.bodyLarge, color = HintGray)
+            HomeInfoPanel {
+                Text("今日未记录", style = MaterialTheme.typography.bodyLarge, color = HintGray)
+            }
         } else {
-            Text(
-                "总摄入：${state.totalIntake.toInt()} ml",
-                style = MaterialTheme.typography.titleLarge.copy(color = PrimaryBlue)
-            )
-            Spacer(Modifier.height(6.dp))
-            Text(
-                "总排出：${state.totalOutput.toInt()} ml" +
-                        if (state.stoolCount > 0) "（大便 ${state.stoolCount} 次）" else "",
-                style = MaterialTheme.typography.titleLarge.copy(color = PrimaryBlue)
-            )
-            Spacer(Modifier.height(6.dp))
             val diff = (state.totalIntake - state.totalOutput).toInt()
             val color: Color = when {
                 diff < 0 -> SuccessGreen
@@ -44,13 +42,18 @@ fun IntakeOutputCard(
                 else -> DangerRed
             }
             val sign = if (diff >= 0) "+" else ""
-            Text(
-                "差值：$sign$diff ml",
-                style = MaterialTheme.typography.titleLarge.copy(color = color)
-            )
+            HomeInfoPanel {
+                HomeMetricRow("总摄入", "${state.totalIntake.toInt()} ml", DangerRed)
+                HomeMetricRow("总排出", "${state.totalOutput.toInt()} ml", SuccessGreen)
+                HomeMetricRow("大便次数", "${state.stoolCount} 次", TextDark)
+                HomeMetricRow("差值", "$sign$diff ml", color)
+            }
         }
-        Spacer(Modifier.height(16.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Spacer(Modifier.height(12.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
             PrimaryBigButton(
                 "记摄入",
                 onClick = onIntake,

@@ -15,13 +15,13 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import com.rooftop.healthlog.R
 import com.rooftop.healthlog.data.local.entity.CustomCategory
 import com.rooftop.healthlog.ui.appViewModel
 import com.rooftop.healthlog.ui.components.BigCard
@@ -111,7 +111,7 @@ fun SettingsScreen() {
         Text("设置", style = MaterialTheme.typography.headlineMedium)
 
         FontSizeSection(
-            isLarge = settings.fontSize == "large",
+            enabled = settings.fontSize == "large",
             onChange = { vm.setFontSize(it) }
         )
 
@@ -152,6 +152,8 @@ fun SettingsScreen() {
                 importLauncher.launch(arrayOf("text/csv", "text/comma-separated-values", "application/csv", "*/*"))
             }
         )
+
+        AboutSection(info = vm.aboutInfo)
 
         Spacer(Modifier.height(80.dp))
     }
@@ -224,9 +226,9 @@ private fun ReminderPermissionSection(
         Spacer(Modifier.height(8.dp))
         Text(
             if (status.allReady) {
-                "后台提醒（服药提醒）所需权限已开启。"
+                "后台提醒所需权限已开启"
             } else {
-                "如果 APP 退到后台后不提醒，请检查以下系统权限。"
+                "如果 APP 退到后台后不提醒，请检查以下系统权限"
             },
             style = MaterialTheme.typography.bodyLarge,
             color = if (status.allReady) SuccessGreen else HintGray
@@ -302,41 +304,51 @@ private fun ProgressDialog(text: String) {
 }
 
 @Composable
-private fun FontSizeSection(isLarge: Boolean, onChange: (Boolean) -> Unit) {
+private fun FontSizeSection(enabled: Boolean, onChange: (Boolean) -> Unit) {
     BigCard {
-        Text("字体大小", style = MaterialTheme.typography.titleLarge)
-        Spacer(Modifier.height(4.dp))
-        Text(
-            "当前：${if (isLarge) "超大字体" else "标准字体"}",
-            style = MaterialTheme.typography.bodyLarge, color = HintGray
-        )
-        Spacer(Modifier.height(12.dp))
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            FontOptionRow("标准字体", !isLarge) { onChange(false) }
-            FontOptionRow("超大字体", isLarge) { onChange(true) }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("超大字体", style = MaterialTheme.typography.titleLarge)
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    if (enabled) "已开启，使用超大字体显示" else "已关闭，使用标准字体显示",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = HintGray
+                )
+            }
+            Switch(
+                checked = enabled,
+                onCheckedChange = onChange,
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = BgWhite,
+                    checkedTrackColor = PrimaryBlue,
+                    uncheckedThumbColor = BgWhite,
+                    uncheckedTrackColor = HintGray
+                )
+            )
         }
     }
 }
 
 @Composable
-private fun FontOptionRow(label: String, selected: Boolean, onClick: () -> Unit) {
-    Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(12.dp),
-        color = if (selected) PrimaryBlue.copy(alpha = 0.08f) else Color.Transparent,
-        border = BorderStroke(
-            1.dp, if (selected) PrimaryBlue else BorderGray
-        ),
-        modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)
-    ) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            RadioButton(selected = selected, onClick = onClick)
-            Spacer(Modifier.width(8.dp))
-            Text(label, style = MaterialTheme.typography.titleMedium)
-        }
+private fun AboutSection(info: AboutInfo) {
+    BigCard {
+        Text("关于", style = MaterialTheme.typography.titleLarge)
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "版本：${info.versionName} (${info.versionCode})",
+            style = MaterialTheme.typography.bodyLarge,
+            color = HintGray
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "编译时间：${info.buildTime}",
+            style = MaterialTheme.typography.bodyLarge,
+            color = HintGray
+        )
     }
 }
 
@@ -497,10 +509,10 @@ private fun IntakeOutputToggleSection(enabled: Boolean, onToggle: (Boolean) -> U
     BigCard {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("开启出入量记录", style = MaterialTheme.typography.titleLarge)
+                Text("出入量记录", style = MaterialTheme.typography.titleLarge)
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "关闭后将隐藏出入量相关内容，不会删除已有数据。",
+                    if (enabled) "已开启，展示出入量相关功能" else "已关闭，已有数据不受影响",
                     style = MaterialTheme.typography.bodyLarge, color = HintGray
                 )
             }
@@ -527,7 +539,7 @@ private fun DataIoSection(
         Text("数据导入 / 导出", style = MaterialTheme.typography.titleLarge)
         Spacer(Modifier.height(8.dp))
         Text(
-            "导出 CSV 到 /Download/healthlog/，支持从 CSV 文件导入合并历史数据。",
+            "导出 CSV 到 /Download/healthlog/，支持从 CSV 文件导入合并历史数据",
             style = MaterialTheme.typography.bodyLarge, color = HintGray
         )
         Spacer(Modifier.height(12.dp))

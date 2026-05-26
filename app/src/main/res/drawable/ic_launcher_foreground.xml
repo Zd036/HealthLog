@@ -1,50 +1,46 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 健康记录APP图标：脉搏线 + 笔记本 白色矢量图标（前景层） -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- 底部脉搏线 -->
+    <!-- 笔记本（整体下移4dp，上下留白更均匀） -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M24,72 L36,72 L40,60 L44,84 L48,72 L52,84 L56,60 L60,72 L72,72 L76,60 L80,72 L84,72"
-        android:strokeWidth="4"
+        android:pathData="M48,30 h22 a2.5,2.5 0 0 1 2.5,2.5 v23 a2.5,2.5 0 0 1 -2.5,2.5 h-22 a2.5,2.5 0 0 1 -2.5,-2.5 v-23 a2.5,2.5 0 0 1 2.5,-2.5 z" />
+
+    <!-- 装订线（同步下移4dp） -->
+    <path
+        android:pathData="M52,34 v18"
+        android:strokeWidth="2.5"
+        android:strokeColor="#757575"
+        android:strokeLineCap="round" />
+
+    <!-- 记录横线（同步下移4dp，间距保持一致） -->
+    <path
+        android:pathData="M56,39 h14"
+        android:strokeWidth="2"
+        android:strokeColor="#757575"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M56,45 h14"
+        android:strokeWidth="2"
+        android:strokeColor="#757575"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M56,51 h14"
+        android:strokeWidth="2"
+        android:strokeColor="#757575"
+        android:strokeLineCap="round" />
+
+    <!-- 脉搏线（位置不变，和笔记本间距更合理） -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M30,74 L38,74 L41,66 L44,82 L48,74 L51,82 L54,66 L58,74 L66,74 L69,66 L72,74 L75,74"
+        android:strokeWidth="3.5"
         android:strokeColor="#FFFFFF"
         android:strokeLineCap="round"
         android:strokeLineJoin="round" />
 
-    <!-- 笔记本封面：圆角矩形 -->
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M34,14 h40 a4,4 0 0 1 4,4 v34 a4,4 0 0 1 -4,4 h-40 a4,4 0 0 1 -4,-4 v-34 a4,4 0 0 1 4,-4 z" />
-
-    <!-- 左侧装订线 -->
-    <path
-        android:pathData="M38,18 v26"
-        android:strokeWidth="3"
-        android:strokeColor="#757575"
-        android:strokeLineCap="round" />
-
-    <!-- 记录横线1 -->
-    <path
-        android:pathData="M44,24 h26"
-        android:strokeWidth="2.5"
-        android:strokeColor="#757575"
-        android:strokeLineCap="round" />
-
-    <!-- 记录横线2 -->
-    <path
-        android:pathData="M44,32 h26"
-        android:strokeWidth="2.5"
-        android:strokeColor="#757575"
-        android:strokeLineCap="round" />
-
-    <!-- 记录横线3（稍短，有层次） -->
-    <path
-        android:pathData="M44,40 h26"
-        android:strokeWidth="2.5"
-        android:strokeColor="#757575"
-        android:strokeLineCap="round" />
 </vector>

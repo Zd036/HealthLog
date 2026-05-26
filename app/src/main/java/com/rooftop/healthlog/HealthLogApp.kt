@@ -12,11 +12,14 @@ import com.rooftop.healthlog.data.repository.IntakeOutputRepository
 import com.rooftop.healthlog.data.repository.MedicationRepository
 import com.rooftop.healthlog.data.repository.SettingsRepository
 import com.rooftop.healthlog.data.repository.VitalSignsRepository
+import com.rooftop.healthlog.utils.AutoBackupManager
+import com.rooftop.healthlog.utils.CsvExporter
 import com.rooftop.healthlog.worker.DailyAlarmSetupWorker
 import com.rooftop.healthlog.worker.MedicationReminderScheduler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /** 应用 Application 类，负责初始化数据库、Repository、WorkManager。 */
@@ -42,6 +45,7 @@ class HealthLogApp : Application(), Configuration.Provider {
         super.onCreate()
         instance = this
         createNotificationChannel()
+        AutoBackupManager.scheduleNext(this)
         // 异步初始化数据库 + WorkManager 重新调度
         appScope.launch {
             // 触发数据库初始化
@@ -51,6 +55,16 @@ class HealthLogApp : Application(), Configuration.Provider {
             DailyAlarmSetupWorker.enqueue(this@HealthLogApp)
         }
     }
+
+    suspend fun buildExportData(): CsvExporter.ExportData =
+        CsvExporter.ExportData(
+            intake = intakeOutputRepository.getAllRecordsForExport().first(),
+            vitals = vitalSignsRepository.getAllRecordsForExport().first(),
+            medRecords = medicationRepository.getAllRecordsForExport().first(),
+            schedules = medicationRepository.getAllSchedules().first(),
+            medications = medicationRepository.getAllMedications().first(),
+            customCategories = intakeOutputRepository.getAllCategories().first(),
+        )
 
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()

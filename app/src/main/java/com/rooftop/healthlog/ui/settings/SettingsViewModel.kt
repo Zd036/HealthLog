@@ -1,11 +1,14 @@
 package com.rooftop.healthlog.ui.settings
 
 import android.net.Uri
+import android.os.Build
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.rooftop.healthlog.BuildConfig
 import com.rooftop.healthlog.HealthLogApp
 import com.rooftop.healthlog.data.local.entity.AppSettings
 import com.rooftop.healthlog.data.local.entity.CustomCategory
+import com.rooftop.healthlog.utils.DateUtils
 import com.rooftop.healthlog.utils.CsvExporter
 import com.rooftop.healthlog.utils.CsvImporter
 import com.rooftop.healthlog.utils.ReminderPermissionHelper
@@ -16,7 +19,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -52,6 +54,17 @@ class SettingsViewModel(private val app: HealthLogApp) : AndroidViewModel(app) {
     val reminderPermissionStatus: StateFlow<ReminderPermissionStatus> =
         _reminderPermissionStatus.asStateFlow()
 
+    val aboutInfo = AboutInfo(
+        appName = app.getString(com.rooftop.healthlog.R.string.app_name),
+        versionName = BuildConfig.VERSION_NAME,
+        versionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            BuildConfig.VERSION_CODE.toLong().toString()
+        } else {
+            BuildConfig.VERSION_CODE.toString()
+        },
+        buildTime = DateUtils.formatYmdHms(BuildConfig.BUILD_TIME_MILLIS)
+    )
+
     fun setFontSize(large: Boolean) {
         viewModelScope.launch {
             app.settingsRepository.setFontSize(if (large) "large" else "normal")
@@ -69,15 +82,7 @@ class SettingsViewModel(private val app: HealthLogApp) : AndroidViewModel(app) {
         viewModelScope.launch {
             val result = runCatching {
                 withContext(Dispatchers.IO) {
-                    val data = CsvExporter.ExportData(
-                        intake = app.intakeOutputRepository.getAllRecordsForExport().first(),
-                        vitals = app.vitalSignsRepository.getAllRecordsForExport().first(),
-                        medRecords = app.medicationRepository.getAllRecordsForExport().first(),
-                        schedules = app.medicationRepository.getAllSchedules().first(),
-                        medications = app.medicationRepository.getAllMedications().first(),
-                        customCategories = intakeRepo.getAllCategories().first(),
-                    )
-                    CsvExporter.exportAll(app, data)
+                    CsvExporter.exportAll(app, app.buildExportData())
                         ?: throw IllegalStateException("写入文件失败")
                 }
             }
@@ -156,3 +161,10 @@ class SettingsViewModel(private val app: HealthLogApp) : AndroidViewModel(app) {
 }
 
 data class ExportResult(val displayPath: String, val error: String? = null)
+
+data class AboutInfo(
+    val appName: String,
+    val versionName: String,
+    val versionCode: String,
+    val buildTime: String,
+)

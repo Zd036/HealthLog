@@ -13,11 +13,6 @@ data class WeightTrendInfo(
     val warningMessage: String?
 )
 
-data class VitalLine(
-    val text: String,
-    val abnormal: Boolean = false
-)
-
 enum class RecentVitalKind {
     BLOOD_PRESSURE,
     HEART_RATE,
@@ -60,7 +55,7 @@ fun isDiastolicAbnormal(value: Int): Boolean = value > 90 || value < 60
 
 fun isBloodPressureAbnormal(systolic: Int?, diastolic: Int?): Boolean =
     (systolic?.let(::isSystolicAbnormal) == true) ||
-        (diastolic?.let(::isDiastolicAbnormal) == true)
+            (diastolic?.let(::isDiastolicAbnormal) == true)
 
 fun isHeartRateAbnormal(value: Int?): Boolean =
     value?.let { it > 100 || it < 60 } == true
@@ -93,38 +88,6 @@ fun computeWeightTrend(currentWeight: Float?, previousWeight: Float?): WeightTre
     return WeightTrendInfo(trend, diff, warningMessage)
 }
 
-fun buildVitalLines(latestVital: VitalSignsRecord?, previousWeight: Float?): List<VitalLine> {
-    if (latestVital == null) return listOf(VitalLine("今日暂无体征记录"))
-
-    val lines = mutableListOf<VitalLine>()
-    if (latestVital.systolic != null && latestVital.diastolic != null) {
-        val abnormal = isBloodPressureAbnormal(latestVital.systolic, latestVital.diastolic)
-        lines += VitalLine(
-            text = "高压/低压 ${latestVital.systolic}/${latestVital.diastolic} mmHg",
-            abnormal = abnormal
-        )
-    }
-    latestVital.heartRate?.let {
-        lines += VitalLine(
-            text = "脉率 $it 次/分",
-            abnormal = isHeartRateAbnormal(it)
-        )
-    }
-    latestVital.weight?.let { weight ->
-        lines += VitalLine(
-            text = "体重 ${"%.1f".format(Locale.CHINA, weight)} 斤",
-            abnormal = isRapidWeightGain(weightGainDelta(weight, previousWeight))
-        )
-    }
-    latestVital.bloodSugar?.let {
-        lines += VitalLine(
-            text = "血糖 ${"%.1f".format(Locale.CHINA, it)} mmol/L",
-            abnormal = isBloodSugarAbnormal(it)
-        )
-    }
-    return lines
-}
-
 fun buildRecentVitalItems(
     todayVitals: List<VitalSignsRecord>,
     weightWindowVitals: List<VitalSignsRecord>
@@ -134,7 +97,8 @@ fun buildRecentVitalItems(
     val items = mutableListOf<RecentVitalItem>()
 
     latestFirst.firstOrNull { it.weight != null }?.let { record ->
-        val previousWeight = previousWeightRecordWithin24Hours(weightWindowVitals, record.time)?.weight
+        val previousWeight =
+            previousWeightRecordWithin24Hours(weightWindowVitals, record.time)?.weight
         val trend = computeWeightTrend(record.weight, previousWeight)
         val diffText = trend?.takeIf { previousWeight != null }?.let {
             val sign = if (it.diff > 0f) "+" else ""
@@ -185,10 +149,6 @@ fun buildRecentVitalItems(
     }
 
     return items
-}
-
-fun buildVitalAlerts(vital: VitalSignsRecord?, previousWeight: Float?): List<String> {
-    return buildVitalAlertDetails(vital, previousWeight).map { it.message }
 }
 
 fun buildVitalAlertDetails(vital: VitalSignsRecord?, previousWeight: Float?): List<VitalAlert> {
@@ -248,7 +208,11 @@ fun buildDailyVitalAlertMessages(alertWindowVitals: List<VitalSignsRecord>): Lis
             upsert(VitalAlertKind.HEART_RATE, record.time, "$it 次/分")
         }
         record.bloodSugar?.takeIf { isBloodSugarAbnormal(it) }?.let {
-            upsert(VitalAlertKind.BLOOD_SUGAR, record.time, "${"%.1f".format(Locale.CHINA, it)} mmol/L")
+            upsert(
+                VitalAlertKind.BLOOD_SUGAR,
+                record.time,
+                "${"%.1f".format(Locale.CHINA, it)} mmol/L"
+            )
         }
         record.weight?.let { weight ->
             val previousWeight = previousWeightRecordWithin24Hours(ordered, record.time)?.weight
@@ -257,7 +221,12 @@ fun buildDailyVitalAlertMessages(alertWindowVitals: List<VitalSignsRecord>): Lis
                 upsert(
                     VitalAlertKind.WEIGHT_GAIN,
                     record.time,
-                    "较24小时前增加 ${"%.1f".format(Locale.CHINA, delta)} 斤（当前 ${"%.1f".format(Locale.CHINA, weight)} 斤）"
+                    "较24小时前增加 ${"%.1f".format(Locale.CHINA, delta)} 斤（当前 ${
+                        "%.1f".format(
+                            Locale.CHINA,
+                            weight
+                        )
+                    } 斤）"
                 )
             }
         }
@@ -276,12 +245,16 @@ fun buildDailyVitalAlertMessages(alertWindowVitals: List<VitalSignsRecord>): Lis
         when (kind) {
             VitalAlertKind.SYSTOLIC ->
                 "高压今日异常 ${item.count} 次，最近一次异常值 为 ${item.latestValue}（$timeText）"
+
             VitalAlertKind.DIASTOLIC ->
                 "低压今日异常 ${item.count} 次，最近一次异常值 为 ${item.latestValue}（$timeText）"
+
             VitalAlertKind.HEART_RATE ->
                 "脉率今日异常 ${item.count} 次，最近一次异常值 为 ${item.latestValue}（$timeText）"
+
             VitalAlertKind.BLOOD_SUGAR ->
                 "血糖今日异常 ${item.count} 次，最近一次异常值 为 ${item.latestValue}（$timeText）"
+
             VitalAlertKind.WEIGHT_GAIN ->
                 "体重今日异常 ${item.count} 次，最近一次异常值 为 ${item.latestValue}（$timeText）"
         }

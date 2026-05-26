@@ -8,6 +8,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.rooftop.healthlog.data.local.entity.VitalSignsRecord
 import com.rooftop.healthlog.ui.theme.*
@@ -19,16 +20,31 @@ import com.rooftop.healthlog.utils.isRapidWeightGain
 import com.rooftop.healthlog.utils.previousWeightRecordWithin24Hours
 import com.rooftop.healthlog.utils.weightGainDelta
 
-fun LazyListScope.vitalSignsList(records: List<VitalSignsRecord>) {
-    if (records.isEmpty()) {
+enum class VitalHistoryTab(val label: String) {
+    WEIGHT("体重"),
+    BLOOD_PRESSURE("血压"),
+    HEART_RATE("脉率"),
+    BLOOD_SUGAR("血糖")
+}
+
+fun LazyListScope.vitalSignsList(records: List<VitalSignsRecord>, tab: VitalHistoryTab) {
+    val filtered = records.filter { record ->
+        when (tab) {
+            VitalHistoryTab.WEIGHT -> record.weight != null
+            VitalHistoryTab.BLOOD_PRESSURE -> record.systolic != null || record.diastolic != null
+            VitalHistoryTab.HEART_RATE -> record.heartRate != null
+            VitalHistoryTab.BLOOD_SUGAR -> record.bloodSugar != null
+        }
+    }
+    if (filtered.isEmpty()) {
         item { EmptyHint("暂无体征记录") }
         return
     }
-    val groups = groupByDay(records.map { it.time })
+    val groups = groupByDay(filtered.map { it.time })
     for ((dayTs, indices) in groups) {
         item(key = "vhdr-$dayTs") { DayGroupHeader(dayTs) }
-        items(indices.size, key = { i -> "v-${records[indices[i]].id}" }) { idx ->
-            VitalSignsItem(records[indices[idx]], records, indices[idx])
+        items(indices.size, key = { i -> "v-${filtered[indices[i]].id}" }) { idx ->
+            VitalSignsItem(filtered[indices[idx]], filtered, tab)
         }
     }
 }
@@ -37,7 +53,7 @@ fun LazyListScope.vitalSignsList(records: List<VitalSignsRecord>) {
 private fun VitalSignsItem(
     v: VitalSignsRecord,
     all: List<VitalSignsRecord>,
-    selfIndex: Int
+    tab: VitalHistoryTab
 ) {
     val bpAbnormal = isBloodPressureAbnormal(v.systolic, v.diastolic)
     val hrAbnormal = isHeartRateAbnormal(v.heartRate)
@@ -52,19 +68,35 @@ private fun VitalSignsItem(
     ) {
         Column(Modifier.padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(DateUtils.formatHm(v.time),
-                    style = MaterialTheme.typography.titleMedium)
+                Text(
+                    DateUtils.formatHm(v.time),
+                    style = historyTimeTextStyle(MaterialTheme.typography.titleMedium)
+                )
             }
             Spacer(Modifier.height(6.dp))
-            FlowMetrics(
-                listOf(
-                    "体重" to (v.weight?.let { "%.1f 斤".format(it) } ?: "-") to weightAbnormal,
-                    "血压" to ((v.systolic?.toString() ?: "-") + "/" +
-                            (v.diastolic?.toString() ?: "-") + " mmHg") to bpAbnormal,
-                    "脉率" to ((v.heartRate?.toString() ?: "-") + " 次/分") to hrAbnormal,
-                    "血糖" to (v.bloodSugar?.let { "%.1f mmol/L".format(it) } ?: "-") to bsAbnormal
+            when (tab) {
+                VitalHistoryTab.WEIGHT -> FlowMetrics(
+                    listOf(
+                        "体重" to (v.weight?.let { "%.1f 斤".format(it) } ?: "-") to weightAbnormal
+                    )
                 )
-            )
+                VitalHistoryTab.BLOOD_PRESSURE -> FlowMetrics(
+                    listOf(
+                        "血压" to ((v.systolic?.toString() ?: "-") + "/" +
+                            (v.diastolic?.toString() ?: "-") + " mmHg") to bpAbnormal
+                    )
+                )
+                VitalHistoryTab.HEART_RATE -> FlowMetrics(
+                    listOf(
+                        "脉率" to ((v.heartRate?.toString() ?: "-") + " 次/分") to hrAbnormal
+                    )
+                )
+                VitalHistoryTab.BLOOD_SUGAR -> FlowMetrics(
+                    listOf(
+                        "血糖" to (v.bloodSugar?.let { "%.1f mmol/L".format(it) } ?: "-") to bsAbnormal
+                    )
+                )
+            }
             if (v.note.isNotBlank()) {
                 Spacer(Modifier.height(4.dp))
                 Text(v.note, style = MaterialTheme.typography.bodyMedium, color = HintGray)
@@ -77,20 +109,28 @@ private fun VitalSignsItem(
 private fun FlowMetrics(items: List<Pair<Pair<String, String>, Boolean>>) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         items.chunked(2).forEach { row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
                 for ((kv, abnormal) in row) {
                     val (name, value) = kv
-                    Row(modifier = Modifier.weight(1f)) {
+                    val itemModifier = if (row.size == 1) Modifier.fillMaxWidth() else Modifier.weight(1f)
+                    Row(
+                        modifier = itemModifier,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Text("$name：", style = MaterialTheme.typography.bodyLarge, color = HintGray)
                         Text(
                             value,
                             style = MaterialTheme.typography.bodyLarge.copy(
                                 color = if (abnormal) DangerRed else TextDark
-                            )
+                            ),
+                            maxLines = 1,
+                            overflow = TextOverflow.Clip
                         )
                     }
                 }
-                if (row.size == 1) Spacer(Modifier.weight(1f))
             }
         }
     }

@@ -52,11 +52,3 @@ fun EmptyStateView(
         }
     }
 }
-
-/** 居中蓝色加载圈 */
-@Composable
-fun LoadingIndicator(modifier: Modifier = Modifier) {
-    Box(modifier = modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
-        CircularProgressIndicator(color = PrimaryBlue)
-    }
-}

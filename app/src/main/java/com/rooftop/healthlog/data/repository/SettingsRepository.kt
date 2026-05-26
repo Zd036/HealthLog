@@ -40,4 +40,9 @@ class SettingsRepository(private val dao: SettingsDao) {
         if (dao.getSettingsSync() == null) dao.upsert(AppSettings())
         dao.updateLastDismissedThreeDayAlertDate(dayStart)
     }
+
+    suspend fun setLastAutoBackupAt(time: Long) {
+        if (dao.getSettingsSync() == null) dao.upsert(AppSettings())
+        dao.updateLastAutoBackupAt(time)
+    }
 }

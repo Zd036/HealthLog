@@ -6,6 +6,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.rooftop.healthlog.ui.theme.PrimaryBlue
 import com.rooftop.healthlog.ui.theme.BgWhite
@@ -17,7 +19,8 @@ fun PrimaryBigButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
-    color: Color = PrimaryBlue
+    color: Color = PrimaryBlue,
+    textStyle: TextStyle = MaterialTheme.typography.labelLarge
 ) {
     Button(
         onClick = onClick,
@@ -28,7 +31,7 @@ fun PrimaryBigButton(
         shape = RoundedCornerShape(12.dp),
         colors = ButtonDefaults.buttonColors(containerColor = color, contentColor = BgWhite)
     ) {
-        Text(text, style = MaterialTheme.typography.labelLarge)
+        Text(text, style = textStyle, maxLines = 2, textAlign = TextAlign.Center)
     }
 }
 

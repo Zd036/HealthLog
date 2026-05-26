@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find /opt/vibe/healthlog3/app/src/main/java -name *.kt)",
+      "Bash(./gradlew assembleDebug --no-daemon)",
+      "Bash(find:*)",
+      "Bash(ls /opt/vibe/healthlog3/*.iml)",
+      "Bash(grep -rn HeartCare app/src/main --include=*.kt --include=*.xml --include=*.gradle*)",
+      "Bash(grep -rn HealthLog app/src/main --include=*.kt --include=*.xml)",
+      "Bash(grep -n \"BigCard\\\\|UiFeedbackBus\" /opt/vibe/healthlog3/app/src/main/java/com/rooftop/healthlog/ui/components/*.kt)"
+    ]
+  }
+}

@@ -11,7 +11,7 @@ import kotlinx.coroutines.launch
 
 data class IOInputState(
     val isIntake: Boolean = true,
-    val category: String = "饮用水",
+    val category: String = "水/牛奶",
     val amountText: String = "",
     val time: Long = System.currentTimeMillis(),
     val note: String = "",
@@ -42,7 +42,7 @@ class IntakeOutputViewModel(app: HealthLogApp) : AndroidViewModel(app) {
         _state.update {
             it.copy(
                 isIntake = intake,
-                category = if (intake) "饮用水" else "尿液",
+                category = if (intake) "水/牛奶" else "尿液",
                 amountText = "",
                 // 修改点2：切换 Tab 时重置时间为当前真实时间
                 time = System.currentTimeMillis()
@@ -62,7 +62,7 @@ class IntakeOutputViewModel(app: HealthLogApp) : AndroidViewModel(app) {
     fun resetInputs(intake: Boolean) {
         _state.value = IOInputState(
             isIntake = intake,
-            category = if (intake) "饮用水" else "尿液",
+            category = if (intake) "水/牛奶" else "尿液",
             time = System.currentTimeMillis(),
             customCategories = _state.value.customCategories
         )

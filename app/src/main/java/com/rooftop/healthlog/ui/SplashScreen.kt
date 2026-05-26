@@ -50,7 +50,7 @@ fun SplashScreen(onFinish: () -> Unit) {
                 )
             )
             Text(
-                "守护您的每一天",
+                "每天记录  健康常在",
                 style = TextStyle(color = Color.White, fontSize = 18.sp)
             )
         }

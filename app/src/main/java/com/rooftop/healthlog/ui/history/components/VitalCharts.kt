@@ -12,6 +12,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import com.rooftop.healthlog.data.local.entity.VitalSignsRecord
+import com.rooftop.healthlog.ui.history.DateRange
 import com.rooftop.healthlog.ui.theme.*
 import com.rooftop.healthlog.utils.isBloodSugarAbnormal
 import com.rooftop.healthlog.utils.isDiastolicAbnormal
@@ -22,8 +23,10 @@ import com.rooftop.healthlog.utils.previousWeightRecordWithin24Hours
 import com.rooftop.healthlog.utils.weightGainDelta
 
 @Composable
-fun WeightChart(records: List<VitalSignsRecord>, days: Int) {
-    val dayStarts = remember(days) { dayStartsForRange(days) }
+fun WeightChart(records: List<VitalSignsRecord>, range: DateRange) {
+    val dayStarts = remember(range, records) {
+        dayStartsForRange(range, records.minOfOrNull { it.time })
+    }
     val dailyRecords = remember(records, dayStarts) {
         dayStarts.map { dayStart ->
             records
@@ -53,7 +56,7 @@ fun WeightChart(records: List<VitalSignsRecord>, days: Int) {
         Spacer(Modifier.height(8.dp))
         Canvas(Modifier.fillMaxWidth().height(200.dp)) {
             val layout = computeLayout()
-            drawAxes(layout, yTicks, { "%.1f".format(it) }, dayStarts, tm, labelStyle)
+            drawAxes(layout, yTicks, { "%.1f".format(it) }, dayStarts, tm, labelStyle, range = range)
             drawLineChart(layout, dayStarts.size, yMin, yMax, vals, highlights,
                 lineColor = Color(0xFF9C27B0), normalDotColor = Color(0xFF9C27B0))
         }
@@ -64,8 +67,10 @@ fun WeightChart(records: List<VitalSignsRecord>, days: Int) {
 
 /** 血压趋势图：双线（高压蓝、低压绿），异常值红色高亮 */
 @Composable
-fun BloodPressureChart(records: List<VitalSignsRecord>, days: Int) {
-    val dayStarts = remember(days) { dayStartsForRange(days) }
+fun BloodPressureChart(records: List<VitalSignsRecord>, range: DateRange) {
+    val dayStarts = remember(range, records) {
+        dayStartsForRange(range, records.minOfOrNull { it.time })
+    }
     val sys = remember(records, dayStarts) {
         bucketDaily(records, { it.time }, { it.systolic?.toFloat() }, dayStarts)
     }
@@ -88,7 +93,7 @@ fun BloodPressureChart(records: List<VitalSignsRecord>, days: Int) {
         Spacer(Modifier.height(8.dp))
         Canvas(Modifier.fillMaxWidth().height(200.dp)) {
             val layout = computeLayout()
-            drawAxes(layout, yTicks, { it.toInt().toString() }, dayStarts, tm, labelStyle)
+            drawAxes(layout, yTicks, { it.toInt().toString() }, dayStarts, tm, labelStyle, range = range)
             drawLineChart(layout, dayStarts.size, yMin, yMax, sys, sysHl,
                 lineColor = PrimaryBlue, normalDotColor = PrimaryBlue)
             drawLineChart(layout, dayStarts.size, yMin, yMax, dia, diaHl,
@@ -100,22 +105,24 @@ fun BloodPressureChart(records: List<VitalSignsRecord>, days: Int) {
 }
 
 @Composable
-fun HeartRateChart(records: List<VitalSignsRecord>, days: Int) {
+fun HeartRateChart(records: List<VitalSignsRecord>, range: DateRange) {
     SingleMetricChart(
         title = "脉率趋势（次/分）",
-        records = records, days = days,
+        records = records,
+        range = range,
         selector = { it.heartRate?.toFloat() },
         abnormal = { v -> isHeartRateAbnormal(v.toInt()) },
         lineColor = WarningYellow,
-        defaultMin = 50f, defaultMax = 110f
+        defaultMin = 50f,
+        defaultMax = 110f
     )
 }
 
 @Composable
-fun BloodSugarChart(records: List<VitalSignsRecord>, days: Int) {
+fun BloodSugarChart(records: List<VitalSignsRecord>, range: DateRange) {
     SingleMetricChart(
         title = "血糖趋势（mmol/L）",
-        records = records, days = days,
+        records = records, range = range,
         selector = { it.bloodSugar },
         abnormal = ::isBloodSugarAbnormal,
         lineColor = Color(0xFF00BCD4),
@@ -128,7 +135,7 @@ fun BloodSugarChart(records: List<VitalSignsRecord>, days: Int) {
 private fun SingleMetricChart(
     title: String,
     records: List<VitalSignsRecord>,
-    days: Int,
+    range: DateRange,
     selector: (VitalSignsRecord) -> Float?,
     abnormal: (Float) -> Boolean,
     lineColor: Color,
@@ -136,7 +143,9 @@ private fun SingleMetricChart(
     defaultMax: Float,
     yFormat: (Float) -> String = { it.toInt().toString() }
 ) {
-    val dayStarts = remember(days) { dayStartsForRange(days) }
+    val dayStarts = remember(range, records) {
+        dayStartsForRange(range, records.minOfOrNull { it.time })
+    }
     val vals = remember(records, dayStarts) {
         bucketDaily(records, { it.time }, selector, dayStarts)
     }
@@ -153,7 +162,7 @@ private fun SingleMetricChart(
         Spacer(Modifier.height(8.dp))
         Canvas(Modifier.fillMaxWidth().height(200.dp)) {
             val layout = computeLayout()
-            drawAxes(layout, yTicks, yFormat, dayStarts, tm, labelStyle)
+            drawAxes(layout, yTicks, yFormat, dayStarts, tm, labelStyle, range = range)
             drawLineChart(layout, dayStarts.size, yMin, yMax, vals, highlights,
                 lineColor = lineColor, normalDotColor = lineColor)
         }

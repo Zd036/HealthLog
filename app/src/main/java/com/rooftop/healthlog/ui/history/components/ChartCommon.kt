@@ -8,10 +8,13 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.unit.Density
+import com.rooftop.healthlog.ui.history.DateRange
 import com.rooftop.healthlog.ui.theme.BorderGray
 import com.rooftop.healthlog.ui.theme.HintGray
+import com.rooftop.healthlog.ui.theme.TextDark
 import com.rooftop.healthlog.utils.DateUtils
 
 /** 图表区域的几何布局参数 */
@@ -54,6 +57,7 @@ fun DrawScope.drawAxes(
     xDayStarts: List<Long>,
     textMeasurer: TextMeasurer,
     labelStyle: TextStyle,
+    range: DateRange? = null,
     gridColor: Color = BorderGray,
     axisColor: Color = HintGray
 ) {
@@ -92,10 +96,9 @@ fun DrawScope.drawAxes(
     // X 轴日期标签
     if (xDayStarts.isNotEmpty()) {
         val step = layout.width / xDayStarts.size.coerceAtLeast(1)
-        // 最多显示 7 个标签
-        val stride = (xDayStarts.size / 7).coerceAtLeast(1)
-        for ((i, t) in xDayStarts.withIndex()) {
-            if (i % stride != 0 && i != xDayStarts.size - 1) continue
+        val indices = xAxisLabelIndices(xDayStarts.size, range)
+        for (i in indices) {
+            val t = xDayStarts[i]
             val cx = layout.left + step * i + step / 2f
             val txt = DateUtils.formatMd(t)
             val tl = textMeasurer.measure(txt, labelStyle)
@@ -107,6 +110,26 @@ fun DrawScope.drawAxes(
             )
         }
     }
+}
+
+private fun xAxisLabelIndices(size: Int, range: DateRange?): List<Int> {
+    if (size <= 0) return emptyList()
+    if (size <= 2) return (0 until size).toList()
+
+    val maxLabels = when (range) {
+        DateRange.LAST_30 -> 5
+        DateRange.ALL -> 6
+        else -> 7
+    }
+    if (size <= maxLabels) return (0 until size).toList()
+
+    val indices = linkedSetOf(0, size - 1)
+    val segments = (maxLabels - 1).coerceAtLeast(1)
+    for (i in 1 until segments) {
+        val idx = ((size - 1).toFloat() * i / segments).toInt()
+        indices += idx.coerceIn(0, size - 1)
+    }
+    return indices.toList().sorted()
 }
 
 /** 画带数据点的折线；缺失值（null）处断开 */
@@ -134,7 +157,8 @@ fun DrawScope.drawLineChart(
 
     // 连线：相邻非空点
     for (i in 0 until values.size - 1) {
-        val a = values[i]; val b = values[i + 1]
+        val a = values[i];
+        val b = values[i + 1]
         if (a != null && b != null) {
             drawLine(
                 color = lineColor,
@@ -214,6 +238,18 @@ fun dayStartsForRange(days: Int): List<Long> {
     }
 }
 
+/** 根据范围生成日期起点列表（升序，含今天；全部模式按实际数据天数展开） */
+fun dayStartsForRange(range: DateRange, minTime: Long?): List<Long> {
+    return if (range == DateRange.ALL) {
+        val firstDay = minTime?.let(DateUtils::dayStartOf) ?: DateUtils.todayStart()
+        val today = DateUtils.todayStart()
+        val days = (((today - firstDay) / (24L * 3600_000L)).toInt() + 1).coerceAtLeast(1)
+        dayStartsForRange(days)
+    } else {
+        dayStartsForRange(range.days)
+    }
+}
+
 /** 根据日期起点对列表分桶：每天取平均（或 null） */
 fun <T> bucketDaily(
     items: List<T>,
@@ -229,35 +265,35 @@ fun <T> bucketDaily(
     }
 }
 
-/** 聚合每日出入量差值（摄入 - 排出，非大便） */
-fun dailyIntakeOutputDiff(
+/** 聚合每日摄入 / 排出值（排出不含大便） */
+fun dailyIntakeOutputTotals(
     records: List<com.rooftop.healthlog.data.local.entity.IntakeOutputRecord>,
     dayStarts: List<Long>
-): List<Float?> {
+): Pair<List<Float?>, List<Float?>> {
     val oneDay = 24L * 3600_000L
-    return dayStarts.map { ds ->
+    val intake = mutableListOf<Float?>()
+    val output = mutableListOf<Float?>()
+    for (ds in dayStarts) {
         val end = ds + oneDay
         val inToday = records.filter { it.time in ds until end }
-        if (inToday.isEmpty()) return@map null
-        var intake = 0f; var output = 0f
+        if (inToday.isEmpty()) {
+            intake += null
+            output += null
+            continue
+        }
+        var intakeTotal = 0f
+        var outputTotal = 0f
         for (r in inToday) {
             when {
-                r.type == "intake" -> intake += r.amount
-                r.type == "output" && r.category != "大便" -> output += r.amount
+                r.type == "intake" -> intakeTotal += r.amount
+                r.type == "output" && r.category != "大便" -> outputTotal += r.amount
             }
         }
-        intake - output
+        intake += intakeTotal
+        output += outputTotal
     }
+    return intake to output
 }
 
-/** 根据差值计算颜色（200 以下绿、500 以下黄、更多红） */
-fun intakeDiffColor(
-    v: Float,
-    green: Color,
-    yellow: Color,
-    red: Color
-): Color = when {
-    v < 200f -> green
-    v < 500f -> yellow
-    else -> red
-}
+fun historyTimeTextStyle(base: TextStyle): TextStyle =
+    base.copy(color = TextDark, fontWeight = FontWeight.Bold)

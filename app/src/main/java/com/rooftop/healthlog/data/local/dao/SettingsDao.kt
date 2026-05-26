@@ -17,4 +17,7 @@ interface SettingsDao {
 
     @Query("UPDATE app_settings SET lastDismissedThreeDayAlertDate = :day WHERE id = 1")
     suspend fun updateLastDismissedThreeDayAlertDate(day: Long)
+
+    @Query("UPDATE app_settings SET lastAutoBackupAt = :time WHERE id = 1")
+    suspend fun updateLastAutoBackupAt(time: Long)
 }

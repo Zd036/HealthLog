@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Medication
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
@@ -31,21 +32,23 @@ fun MedicationCard(
     onScheduleClick: (PendingSchedule) -> Unit = {}
 ) {
     BigCard {
-        Text("今日用药", style = MaterialTheme.typography.titleLarge)
-        Spacer(Modifier.height(12.dp))
+        HomeCardHeader(
+            title = "今日用药",
+            accentColor = PrimaryBlue,
+            icon = Icons.Filled.Medication
+        )
+        Spacer(Modifier.height(8.dp))
         when {
-            schedules.isEmpty() -> Text(
-                "暂未设置用药时间点",
-                style = MaterialTheme.typography.bodyLarge,
-                color = HintGray
-            )
-            else -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            schedules.isEmpty() -> HomeInfoPanel {
+                Text(
+                    "暂未设置用药时间点",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = HintGray
+                )
+            }
+            else -> Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 if (done) {
-                    Text(
-                        "今日用药已完成",
-                        style = MaterialTheme.typography.titleMedium.copy(color = SuccessGreen)
-                    )
-                    Spacer(Modifier.height(8.dp))
+                    HomeStatusPill("今日用药已完成", SuccessGreen)
                 }
                 for (p in schedules) {
                     val isPending = p.status == MedicationSlotStatus.PENDING
@@ -76,7 +79,8 @@ fun MedicationCard(
                                             MedicationSlotStatus.PENDING -> PrimaryBlue
                                             MedicationSlotStatus.TAKEN -> SuccessGreen
                                             MedicationSlotStatus.MISSED -> DangerRed
-                                        }
+                                        },
+                                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
                                     )
                                 )
                                 Text(

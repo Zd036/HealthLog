@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.core.content.ContextCompat
 import android.content.pm.PackageManager
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
 import com.rooftop.healthlog.receiver.MedicationAlarmReceiver
 import com.rooftop.healthlog.ui.SplashScreen
 import com.rooftop.healthlog.ui.MainScaffold
@@ -26,6 +27,8 @@ import com.rooftop.healthlog.ui.components.FontSizeMode
 import com.rooftop.healthlog.ui.components.FontSizeProvider
 import com.rooftop.healthlog.ui.settings.SettingsViewModel
 import com.rooftop.healthlog.ui.theme.HealthLogTheme
+import com.rooftop.healthlog.utils.AutoBackupManager
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -71,6 +74,9 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         launchActiveMedicationReminderIfNeeded()
+        lifecycleScope.launch {
+            AutoBackupManager.runIfDue(applicationContext)
+        }
     }
 
     /**

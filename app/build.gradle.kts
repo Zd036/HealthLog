@@ -1,8 +1,17 @@
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("com.google.devtools.ksp")
 }
+
+val buildTimeText = SimpleDateFormat(
+    "yyyy-MM-dd HH:mm:ss",
+    Locale.CHINA
+).format(Date())
 
 android {
     namespace = "com.rooftop.healthlog"
@@ -12,8 +21,9 @@ android {
         applicationId = "com.rooftop.healthlog"
         minSdk = 28
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 23
+        versionName = "1.00.03"
+        buildConfigField("long", "BUILD_TIME_MILLIS", "${System.currentTimeMillis()}L")
         vectorDrawables { useSupportLibrary = true }
     }
 
@@ -29,7 +39,10 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
-    buildFeatures { compose = true }
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
     composeOptions { kotlinCompilerExtensionVersion = "1.5.8" }
     packaging {
         resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" }

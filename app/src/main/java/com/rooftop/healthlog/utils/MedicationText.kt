@@ -21,19 +21,6 @@ fun medicationSpecificationLabel(specification: Float, unit: String): String? {
     return "每${unit}含${formatMedicationAmount(specification)}mg"
 }
 
-fun medicationDetailLabel(
-    dosage: Float,
-    unit: String,
-    specification: Float,
-    method: String,
-): String {
-    return buildList {
-        add(medicationDoseLabel(dosage, unit))
-        medicationSpecificationLabel(specification, unit)?.let(::add)
-        method.trim().takeIf { it.isNotEmpty() }?.let(::add)
-    }.joinToString(" · ")
-}
-
 fun medicationStatusLabel(status: String): String = when (status) {
     MEDICATION_STATUS_TAKEN -> "已服用"
     MEDICATION_STATUS_MISSED -> "漏服"

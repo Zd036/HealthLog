@@ -10,6 +10,12 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+enum class VitalRecordTab(val label: String) {
+    WEIGHT("体重"),
+    BLOOD_PRESSURE("血压/脉率"),
+    BLOOD_SUGAR("血糖")
+}
+
 data class VitalsInputState(
     val systolic: String = "",
     val diastolic: String = "",
@@ -63,6 +69,16 @@ class VitalSignsViewModel(app: HealthLogApp) : AndroidViewModel(app) {
                s.bloodSugar.isBlank()
     }
 
+    fun isCurrentTabEmpty(tab: VitalRecordTab): Boolean {
+        val s = _state.value
+        return when (tab) {
+            VitalRecordTab.WEIGHT -> s.weight.isBlank()
+            VitalRecordTab.BLOOD_PRESSURE ->
+                s.systolic.isBlank() && s.diastolic.isBlank() && s.heartRate.isBlank()
+            VitalRecordTab.BLOOD_SUGAR -> s.bloodSugar.isBlank()
+        }
+    }
+
     fun bloodPressurePairMessage(): String? {
         val s = _state.value
         val hasSys = s.systolic.isNotBlank()
@@ -74,19 +90,38 @@ class VitalSignsViewModel(app: HealthLogApp) : AndroidViewModel(app) {
         }
     }
 
-    fun save(onDone: (List<String>) -> Unit) {
+    fun save(tab: VitalRecordTab, onDone: (List<String>) -> Unit) {
         val s = _state.value
-        // 修改点2：保存时使用"保存瞬间"的真实时间，而非页面打开时间
         val now = System.currentTimeMillis()
-        val record = VitalSignsRecord(
-            systolic = s.systolic.toIntOrNull(),
-            diastolic = s.diastolic.toIntOrNull(),
-            heartRate = s.heartRate.toIntOrNull(),
-            weight = s.weight.toFloatOrNull(),
-            bloodSugar = s.bloodSugar.toFloatOrNull(),
-            note = s.note,
-            time = now
-        )
+        val record = when (tab) {
+            VitalRecordTab.WEIGHT -> VitalSignsRecord(
+                systolic = null,
+                diastolic = null,
+                heartRate = null,
+                weight = s.weight.toFloatOrNull(),
+                bloodSugar = null,
+                note = s.note,
+                time = now
+            )
+            VitalRecordTab.BLOOD_PRESSURE -> VitalSignsRecord(
+                systolic = s.systolic.toIntOrNull(),
+                diastolic = s.diastolic.toIntOrNull(),
+                heartRate = s.heartRate.toIntOrNull(),
+                weight = null,
+                bloodSugar = null,
+                note = s.note,
+                time = now
+            )
+            VitalRecordTab.BLOOD_SUGAR -> VitalSignsRecord(
+                systolic = null,
+                diastolic = null,
+                heartRate = null,
+                weight = null,
+                bloodSugar = s.bloodSugar.toFloatOrNull(),
+                note = s.note,
+                time = now
+            )
+        }
         viewModelScope.launch {
             repo.insert(record)
             onDone(buildVitalAlertDetails(record, null).map { it.message })

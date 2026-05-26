@@ -9,6 +9,7 @@ object DateUtils {
 
     private val ymd = SimpleDateFormat("yyyy-MM-dd", Locale.CHINA)
     private val ymdhm = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.CHINA)
+    private val ymdhms = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.CHINA)
     private val hm = SimpleDateFormat("HH:mm", Locale.CHINA)
     private val mdhm = SimpleDateFormat("M月d日 HH:mm", Locale.CHINA)
     private val fullZh = SimpleDateFormat("yyyy年M月d日", Locale.CHINA)
@@ -16,6 +17,7 @@ object DateUtils {
 
     fun formatYmd(time: Long): String = ymd.format(Date(time))
     fun formatYmdHm(time: Long): String = ymdhm.format(Date(time))
+    fun formatYmdHms(time: Long): String = ymdhms.format(Date(time))
     fun formatHm(time: Long): String = hm.format(Date(time))
     fun formatMdHm(time: Long): String = mdhm.format(Date(time))
     fun formatFullZh(time: Long): String = fullZh.format(Date(time))

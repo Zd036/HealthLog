@@ -71,14 +71,16 @@ private fun IntakeOutputListItem(r: IntakeOutputRecord, onDelete: (IntakeOutputR
             Modifier.padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(DateUtils.formatHm(r.time),
-                style = MaterialTheme.typography.bodyLarge,
-                modifier = Modifier.width(64.dp))
+            Text(
+                DateUtils.formatHm(r.time),
+                style = historyTimeTextStyle(MaterialTheme.typography.titleMedium),
+                modifier = Modifier.width(64.dp)
+            )
             val typeLabel = if (r.type == "intake") "摄入" else "排出"
             val tagColor = if (r.type == "intake") DangerRed else SuccessGreen
             AssistChip(
                 onClick = {},
-                label = { Text(text=typeLabel, color = TextDark) },
+                label = { Text(text = typeLabel, color = tagColor) },
                 colors = AssistChipDefaults.assistChipColors(
                     containerColor = tagColor.copy(alpha = 0.12f),
                     labelColor = tagColor

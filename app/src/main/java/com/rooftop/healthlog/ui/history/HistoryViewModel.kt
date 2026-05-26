@@ -16,7 +16,6 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -27,12 +26,6 @@ enum class DateRange(val days: Int, val label: String) {
     LAST_7(7, "最近7天"),
     LAST_30(30, "最近30天"),
     ALL(-1, "全部");
-}
-
-/** 图表维度 */
-enum class ChartPeriod(val days: Int, val label: String) {
-    WEEK(7, "周"),
-    MONTH(30, "月");
 }
 
 class HistoryViewModel(app: HealthLogApp) : AndroidViewModel(app) {
@@ -49,9 +42,6 @@ class HistoryViewModel(app: HealthLogApp) : AndroidViewModel(app) {
 
     private val _medRange = MutableStateFlow(DateRange.LAST_7)
     val medRange: StateFlow<DateRange> = _medRange.asStateFlow()
-
-    private val _chartPeriod = MutableStateFlow(ChartPeriod.WEEK)
-    val chartPeriod: StateFlow<ChartPeriod> = _chartPeriod.asStateFlow()
 
     /** 历史页列表仅加载最近 500 条。 */
     val intakeOutput: StateFlow<List<IntakeOutputRecord>> =
@@ -88,31 +78,33 @@ class HistoryViewModel(app: HealthLogApp) : AndroidViewModel(app) {
 
     /** 图表使用的时间范围数据，避免历史列表的 500 条限制影响趋势图。 */
     val intakeChartRecords: StateFlow<List<IntakeOutputRecord>> =
-        combine(_intakeRange, _chartPeriod) { range, period ->
-            resolveChartRange(range, period)
-        }
-            .flatMapLatest { (start, end) -> intakeRepo.records(start, end) }
+        _intakeRange
+            .flatMapLatest { range ->
+                val (start, end) = resolveChartRange(range)
+                intakeRepo.records(start, end)
+            }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val vitalChartRecords: StateFlow<List<VitalSignsRecord>> =
-        combine(_vitalRange, _chartPeriod) { range, period ->
-            resolveChartRange(range, period)
-        }
-            .flatMapLatest { (start, end) -> vitalRepo.between(start, end) }
+        _vitalRange
+            .flatMapLatest { range ->
+                val (start, end) = resolveChartRange(range)
+                vitalRepo.between(start, end)
+            }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val medChartRecords: StateFlow<List<MedicationHistoryItem>> =
-        combine(_medRange, _chartPeriod) { range, period ->
-            resolveChartRange(range, period)
-        }
-            .flatMapLatest { (start, end) -> medRepo.getRecordsBetween(start, end) }
+        _medRange
+            .flatMapLatest { range ->
+                val (start, end) = resolveChartRange(range)
+                medRepo.getRecordsBetween(start, end)
+            }
             .map(::groupMedicationRecords)
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun setIntakeRange(r: DateRange) { _intakeRange.value = r }
     fun setVitalRange(r: DateRange) { _vitalRange.value = r }
     fun setMedRange(r: DateRange) { _medRange.value = r }
-    fun setChartPeriod(p: ChartPeriod) { _chartPeriod.value = p }
 
     fun deleteIntakeOutput(r: IntakeOutputRecord) {
         viewModelScope.launch {
@@ -160,16 +152,10 @@ class HistoryViewModel(app: HealthLogApp) : AndroidViewModel(app) {
 }
 
 /**
- * 图表按时间范围取数：
- * - 若用户选择“全部”，仍允许回退为图表维度的最近 7/30 天，避免趋势图加载全部历史。
- * - 这样可以满足“趋势图按时间范围查询，不需要加载全部数据”的要求。
+ * 图表按当前时间范围取数。
  */
-private fun resolveChartRange(
-    range: DateRange,
-    chartPeriod: ChartPeriod
-): Pair<Long, Long> {
-    val effectiveDays = if (range == DateRange.ALL) chartPeriod.days else range.days
-    if (effectiveDays < 0) return 0L to Long.MAX_VALUE
-    val from = DateUtils.daysAgoStart(effectiveDays - 1)
-    return from to System.currentTimeMillis()
+private fun resolveChartRange(range: DateRange): Pair<Long, Long> {
+    if (range == DateRange.ALL) return 0L to Long.MAX_VALUE
+    val from = DateUtils.daysAgoStart(range.days - 1)
+    return from to Long.MAX_VALUE
 }

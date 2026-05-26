@@ -124,7 +124,7 @@ fun IntakeOutputScreen(startWithIntake: Boolean, onClose: () -> Unit) {
                 }
                 Surface(shadowElevation = 8.dp) {
                     Box(modifier = Modifier.padding(16.dp)) {
-                        PrimaryBigButton("保存记录", onClick = {
+                        PrimaryBigButton("保存", onClick = {
                             vm.save {
                                 UiFeedbackBus.show(
                                     if (state.isIntake) "已保存摄入记录" else "已保存排出记录"
@@ -191,7 +191,7 @@ private fun InputArea(vm: IntakeOutputViewModel, state: IOInputState) {
         }
     }
 
-    if (state.isIntake && state.category == "饮用水") {
+    if (state.isIntake && state.category == "水/牛奶") {
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             QuickPickButton("吃药 20ml") {

@@ -20,6 +20,7 @@ import com.rooftop.healthlog.ui.components.UiFeedbackBus
 import com.rooftop.healthlog.ui.home.components.*
 import com.rooftop.healthlog.ui.settings.SettingsViewModel
 import com.rooftop.healthlog.ui.theme.PrimaryBlue
+import com.rooftop.healthlog.ui.vitalsigns.VitalRecordTab
 import com.rooftop.healthlog.utils.ShareHelper
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -33,7 +34,7 @@ import java.util.*
 @Composable
 fun HomeScreen(
     onRecordIntakeOutput: (intake: Boolean) -> Unit,
-    onRecordVitalSigns: () -> Unit
+    onRecordVitalSigns: (VitalRecordTab) -> Unit
 ) {
     val vm: HomeViewModel = appViewModel()
     val settingsVm: SettingsViewModel = appViewModel()
@@ -74,7 +75,7 @@ fun HomeScreen(
                         alerts = state.alerts,
                         medications = meds
                     )
-                    UiFeedbackBus.show("请选择分享方式")
+                    UiFeedbackBus.show("已打开微信，请选择好友发送")
                 } catch (e: Exception) {
                     UiFeedbackBus.show("分享失败：${e.message ?: "未知错误"}")
                 }
@@ -136,16 +137,16 @@ private fun TopBar(onShare: () -> Unit) {
     ) {
         Text(dateStr, style = MaterialTheme.typography.headlineMedium)
         TextButton(onClick = onShare, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)) {
+            Text(
+                "分享",
+                style = MaterialTheme.typography.titleMedium.copy(color = PrimaryBlue)
+            )
+            Spacer(Modifier.width(4.dp))
             Icon(
                 Icons.Filled.Share,
                 contentDescription = "分享当天记录",
                 modifier = Modifier.size(20.dp),
                 tint = PrimaryBlue
-            )
-            Spacer(Modifier.width(4.dp))
-            Text(
-                "分享",
-                style = MaterialTheme.typography.titleMedium.copy(color = PrimaryBlue)
             )
         }
     }

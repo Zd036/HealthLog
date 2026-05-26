@@ -1,5 +1,6 @@
 package com.rooftop.healthlog.utils
 
+import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
 import android.os.Build
@@ -30,8 +31,10 @@ import java.util.Locale
  */
 object CsvExporter {
 
-    private const val DIR_REL = "Download/healthlog"
-    private const val SUBDIR = "healthlog"
+    private const val MANUAL_DIR_REL = "Download/healthlog"
+    private const val MANUAL_SUBDIR = "healthlog"
+    private const val AUTO_BACKUP_DIR_REL = "Download/healthlog/backup"
+    private const val AUTO_BACKUP_SUBDIR = "healthlog/backup"
     private val nameFmt = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.CHINA)
 
     data class ExportData(
@@ -46,41 +49,119 @@ object CsvExporter {
     /** 导出全量数据，成功返回展示路径（如 "/Download/healthlog/xxx.csv"），失败返回 null */
     fun exportAll(context: Context, data: ExportData): String? {
         val fileName = "健康记录_${nameFmt.format(Date())}.csv"
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            exportViaMediaStore(context, fileName, data)
+        return export(context, fileName, MANUAL_DIR_REL, MANUAL_SUBDIR, data)
+    }
+
+    /** 自动备份到 Download/healthlog/backup 目录。 */
+    fun exportAutoBackup(context: Context, data: ExportData): String? {
+        val fileName = "auto_backup_${nameFmt.format(Date())}.csv"
+        return export(context, fileName, AUTO_BACKUP_DIR_REL, AUTO_BACKUP_SUBDIR, data)
+    }
+
+    /** 自动备份仅保留最近 [keepCount] 个文件。 */
+    fun pruneAutoBackups(context: Context, keepCount: Int = 7) {
+        if (keepCount <= 0) return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            pruneAutoBackupsViaMediaStore(context, keepCount)
         } else {
-            exportViaLegacyFile(fileName, data)
+            pruneAutoBackupsViaLegacyFile(keepCount)
         }
     }
 
-    private fun exportViaMediaStore(context: Context, fileName: String, data: ExportData): String? {
+    private fun export(
+        context: Context,
+        fileName: String,
+        relativePath: String,
+        legacySubdir: String,
+        data: ExportData,
+    ): String? {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            exportViaMediaStore(context, fileName, relativePath, data)
+        } else {
+            exportViaLegacyFile(fileName, relativePath, legacySubdir, data)
+        }
+    }
+
+    private fun exportViaMediaStore(
+        context: Context,
+        fileName: String,
+        relativePath: String,
+        data: ExportData,
+    ): String? {
         val resolver = context.contentResolver
         val values = ContentValues().apply {
             put(MediaStore.Downloads.DISPLAY_NAME, fileName)
             put(MediaStore.Downloads.MIME_TYPE, "text/csv")
-            put(MediaStore.Downloads.RELATIVE_PATH, DIR_REL)
+            put(MediaStore.Downloads.RELATIVE_PATH, relativePath)
         }
         val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: return null
         return try {
             resolver.openOutputStream(uri)?.use { os -> writeCsvTo(os, data) }
-            "/$DIR_REL/$fileName"
+            "/$relativePath/$fileName"
         } catch (t: Throwable) {
             try { resolver.delete(uri, null, null) } catch (_: Throwable) {}
             null
         }
     }
 
-    private fun exportViaLegacyFile(fileName: String, data: ExportData): String? {
+    private fun exportViaLegacyFile(
+        fileName: String,
+        relativePath: String,
+        legacySubdir: String,
+        data: ExportData,
+    ): String? {
         return try {
             val downloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-            val dir = File(downloads, SUBDIR)
+            val dir = File(downloads, legacySubdir)
             if (!dir.exists() && !dir.mkdirs()) return null
             val file = File(dir, fileName)
             FileOutputStream(file).use { writeCsvTo(it, data) }
-            "/$DIR_REL/$fileName"
+            "/$relativePath/$fileName"
         } catch (_: Throwable) {
             null
         }
+    }
+
+    private fun pruneAutoBackupsViaMediaStore(context: Context, keepCount: Int) {
+        val resolver = context.contentResolver
+        val projection = arrayOf(
+            MediaStore.Downloads._ID,
+            MediaStore.Downloads.DISPLAY_NAME
+        )
+        val selection =
+            "${MediaStore.Downloads.RELATIVE_PATH} LIKE ? AND ${MediaStore.Downloads.DISPLAY_NAME} LIKE ?"
+        val selectionArgs = arrayOf("$AUTO_BACKUP_DIR_REL%", "auto_backup_%.csv")
+        val sortOrder = "${MediaStore.Downloads.DISPLAY_NAME} DESC"
+
+        resolver.query(
+            MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+            projection,
+            selection,
+            selectionArgs,
+            sortOrder
+        )?.use { cursor ->
+            val idIndex = cursor.getColumnIndexOrThrow(MediaStore.Downloads._ID)
+            var position = 0
+            while (cursor.moveToNext()) {
+                if (position >= keepCount) {
+                    val id = cursor.getLong(idIndex)
+                    val uri = ContentUris.withAppendedId(MediaStore.Downloads.EXTERNAL_CONTENT_URI, id)
+                    runCatching { resolver.delete(uri, null, null) }
+                }
+                position++
+            }
+        }
+    }
+
+    private fun pruneAutoBackupsViaLegacyFile(keepCount: Int) {
+        val downloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+        val dir = File(downloads, AUTO_BACKUP_SUBDIR)
+        val backups = dir.listFiles()
+            ?.filter { it.isFile && it.name.startsWith("auto_backup_") && it.name.endsWith(".csv") }
+            ?.sortedByDescending { it.name }
+            ?: return
+
+        backups.drop(keepCount).forEach { runCatching { it.delete() } }
     }
 
     private fun writeCsvTo(os: OutputStream, data: ExportData) {

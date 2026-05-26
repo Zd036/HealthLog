@@ -2,10 +2,10 @@ package com.rooftop.healthlog.ui.history
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.sp
@@ -20,6 +20,7 @@ import com.rooftop.healthlog.ui.theme.HintGray
 import com.rooftop.healthlog.ui.theme.PrimaryBlue
 import com.rooftop.healthlog.utils.DateUtils
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HistoryScreen() {
     val vm: HistoryViewModel = appViewModel()
@@ -34,7 +35,6 @@ fun HistoryScreen() {
     val intakeRange by vm.intakeRange.collectAsStateWithLifecycle()
     val vitalRange by vm.vitalRange.collectAsStateWithLifecycle()
     val medRange by vm.medRange.collectAsStateWithLifecycle()
-    val chartPeriod by vm.chartPeriod.collectAsStateWithLifecycle()
     val intakeTotalCount by vm.intakeTotalCount.collectAsStateWithLifecycle()
     val vitalTotalCount by vm.vitalsTotalCount.collectAsStateWithLifecycle()
     val medTotalCount by vm.medsTotalCount.collectAsStateWithLifecycle()
@@ -65,16 +65,12 @@ fun HistoryScreen() {
         }
 
         Spacer(Modifier.height(8.dp))
-        PeriodSelector(chartPeriod) { vm.setChartPeriod(it) }
-
-        Spacer(Modifier.height(8.dp))
 
         when (actualTabName) {
             "出入量" -> IntakeOutputTab(
                 records = io,
                 chartRecords = ioChartRecords,
                 range = intakeRange,
-                period = chartPeriod,
                 totalCount = intakeTotalCount,
                 onDelete = vm::deleteIntakeOutput
             )
@@ -82,14 +78,12 @@ fun HistoryScreen() {
                 records = vitals,
                 chartRecords = vitalChartRecords,
                 range = vitalRange,
-                period = chartPeriod,
                 totalCount = vitalTotalCount
             )
             "服药"   -> MedicationTab(
                 records = groupedMeds,
                 chartRecords = medChartRecords,
                 range = medRange,
-                period = chartPeriod,
                 totalCount = medTotalCount
             )
         }
@@ -110,67 +104,10 @@ private fun RangeFilter(current: DateRange, onPick: (DateRange) -> Unit) {
 }
 
 @Composable
-private fun PeriodSelector(period: ChartPeriod, onPick: (ChartPeriod) -> Unit) {
-    Row(
-        horizontalArrangement = Arrangement.End,
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Text("图表维度：", style = MaterialTheme.typography.bodyMedium)
-        SegmentedButtons(
-            items = ChartPeriod.values().toList(),
-            selected = period,
-            labelOf = { it.label },
-            onSelect = onPick
-        )
-    }
-}
-
-@Composable
-private fun <T> SegmentedButtons(
-    items: List<T>,
-    selected: T,
-    labelOf: (T) -> String,
-    onSelect: (T) -> Unit
-) {
-    Row {
-        for ((i, it) in items.withIndex()) {
-            val isFirst = i == 0; val isLast = i == items.size - 1
-            val shape = when {
-                items.size == 1 -> RoundedCornerShape(8.dp)
-                isFirst -> RoundedCornerShape(topStart = 8.dp, bottomStart = 8.dp)
-                isLast -> RoundedCornerShape(topEnd = 8.dp, bottomEnd = 8.dp)
-                else -> RoundedCornerShape(0.dp)
-            }
-            val isSelected = it == selected
-            Surface(
-                shape = shape,
-                color = if (isSelected) PrimaryBlue else PrimaryBlue.copy(alpha = 0.08f),
-                onClick = { onSelect(it) },
-                modifier = Modifier.height(40.dp)
-            ) {
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier.padding(horizontal = 16.dp).fillMaxHeight()
-                ) {
-                    Text(
-                        labelOf(it),
-                        style = MaterialTheme.typography.bodyLarge.copy(
-                            color = if (isSelected) MaterialTheme.colorScheme.onPrimary else PrimaryBlue
-                        )
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
 private fun IntakeOutputTab(
     records: List<IntakeOutputRecord>,
     chartRecords: List<IntakeOutputRecord>,
     range: DateRange,
-    period: ChartPeriod,
     totalCount: Int,
     onDelete: (IntakeOutputRecord) -> Unit
 ) {
@@ -178,7 +115,7 @@ private fun IntakeOutputTab(
     LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         item {
             // 图表单独使用按时间范围查询的数据，避免受 500 条列表限制影响。
-            IntakeOutputChart(records = chartRecords, days = period.days)
+            IntakeOutputChart(records = chartRecords, range = range)
             Spacer(Modifier.height(12.dp))
         }
         intakeOutputList(filtered, onDelete)
@@ -188,24 +125,70 @@ private fun IntakeOutputTab(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun VitalsTab(
     records: List<VitalSignsRecord>,
     chartRecords: List<VitalSignsRecord>,
     range: DateRange,
-    period: ChartPeriod,
     totalCount: Int
 ) {
+    val vitalTabs = remember { VitalHistoryTab.entries.toList() }
+    var vitalTab by remember { mutableStateOf(VitalHistoryTab.WEIGHT) }
+    var vitalExpanded by remember { mutableStateOf(false) }
     val filtered = remember(records, range) { filterByRange(records, { it.time }, range) }
     LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         item {
             // 图表单独使用按时间范围查询的数据，避免受 500 条列表限制影响。
-            WeightChart(chartRecords, period.days); Spacer(Modifier.height(12.dp))
-            BloodPressureChart(chartRecords, period.days); Spacer(Modifier.height(12.dp))
-            HeartRateChart(chartRecords, period.days); Spacer(Modifier.height(12.dp))
-            BloodSugarChart(chartRecords, period.days); Spacer(Modifier.height(12.dp))
+            ExposedDropdownMenuBox(
+                expanded = vitalExpanded,
+                onExpandedChange = { vitalExpanded = !vitalExpanded }
+            ) {
+                OutlinedTextField(
+                    value = vitalTab.label,
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("体征项目") },
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(color = Color.Black),
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = vitalExpanded) },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color.Black,
+                        unfocusedTextColor = Color.Black,
+                        disabledTextColor = Color.Black,
+                        focusedLabelColor = HintGray,
+                        unfocusedLabelColor = HintGray,
+                        focusedTrailingIconColor = HintGray,
+                        unfocusedTrailingIconColor = HintGray
+                    ),
+                    modifier = Modifier
+                        .menuAnchor()
+                        .fillMaxWidth()
+                )
+                ExposedDropdownMenu(
+                    expanded = vitalExpanded,
+                    onDismissRequest = { vitalExpanded = false }
+                ) {
+                    vitalTabs.forEach { item ->
+                        DropdownMenuItem(
+                            text = { Text(item.label, color = Color.Black) },
+                            onClick = {
+                                vitalTab = item
+                                vitalExpanded = false
+                            }
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+            when (vitalTab) {
+                VitalHistoryTab.WEIGHT -> WeightChart(chartRecords, range)
+                VitalHistoryTab.BLOOD_PRESSURE -> BloodPressureChart(chartRecords, range)
+                VitalHistoryTab.HEART_RATE -> HeartRateChart(chartRecords, range)
+                VitalHistoryTab.BLOOD_SUGAR -> BloodSugarChart(chartRecords, range)
+            }
+            Spacer(Modifier.height(12.dp))
         }
-        vitalSignsList(filtered)
+        vitalSignsList(filtered, vitalTab)
         if (totalCount > HistoryViewModel.HISTORY_DISPLAY_LIMIT) {
             item { HistoryLimitHint() }
         }
@@ -217,14 +200,13 @@ private fun MedicationTab(
     records: List<MedicationHistoryItem>,
     chartRecords: List<MedicationHistoryItem>,
     range: DateRange,
-    period: ChartPeriod,
     totalCount: Int
 ) {
     val filtered = remember(records, range) { filterByRange(records, { it.scheduledTime }, range) }
     LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         item {
             // 图表单独使用按时间范围查询的数据，避免受 500 条列表限制影响。
-            MedicationComplianceChart(chartRecords, period.days)
+            MedicationComplianceChart(chartRecords, range)
             Spacer(Modifier.height(12.dp))
         }
         medicationList(filtered)

@@ -57,6 +57,11 @@
             </intent-filter>
         </receiver>
 
+        <receiver
+            android:name=".receiver.AutoBackupReceiver"
+            android:enabled="true"
+            android:exported="false" />
+
         <!-- 修改点2：开机后重新注册所有用药闹钟 -->
         <receiver
             android:name=".receiver.BootCompletedReceiver"

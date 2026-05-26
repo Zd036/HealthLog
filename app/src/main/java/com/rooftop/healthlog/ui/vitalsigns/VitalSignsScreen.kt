@@ -24,13 +24,19 @@ import com.rooftop.healthlog.ui.theme.PrimaryBlue
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun VitalSignsScreen(onClose: () -> Unit) {
+fun VitalSignsScreen(
+    initialTab: VitalRecordTab = VitalRecordTab.WEIGHT,
+    onClose: () -> Unit
+) {
     val vm: VitalSignsViewModel = appViewModel()
     val state by vm.state.collectAsStateWithLifecycle()
     var validationMessage by remember { mutableStateOf<String?>(null) }
     var abnormalAlertMessage by remember { mutableStateOf<String?>(null) }
+    val tabs = remember { VitalRecordTab.entries.toList() }
+    var selectedTab by remember(initialTab) { mutableStateOf(initialTab) }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(initialTab) {
+        selectedTab = initialTab
         vm.clearInputFields()
     }
 
@@ -52,6 +58,18 @@ fun VitalSignsScreen(onClose: () -> Unit) {
                         navigationIconContentColor = Color.White
                     )
                 )
+                TabRow(selectedTabIndex = tabs.indexOf(selectedTab).coerceAtLeast(0)) {
+                    tabs.forEachIndexed { index, item ->
+                        Tab(
+                            selected = selectedTab == item,
+                            onClick = {
+                                selectedTab = item
+                                vm.clearInputFields()
+                            },
+                            text = { Text(item.label, style = MaterialTheme.typography.titleLarge) }
+                        )
+                    }
+                }
                 Column(
                     modifier = Modifier
                         .weight(1f)
@@ -59,11 +77,19 @@ fun VitalSignsScreen(onClose: () -> Unit) {
                         .padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    BigField("体重 ⚖\uFE0F (斤)", state.weight, vm::setWeight, "请输入体重", KeyboardType.Decimal)
-                    BigField("高压 \uD83E\uDE78 (mmHg)", state.systolic, vm::setSys, "请输入高压", KeyboardType.Number)
-                    BigField("低压 \uD83E\uDE78 (mmHg)", state.diastolic, vm::setDia, "请输入低压", KeyboardType.Number)
-                    BigField("脉率 \uD83E\uDE7A (次/分)", state.heartRate, vm::setHr, "请输入脉率", KeyboardType.Number)
-                    BigField("血糖 \uD83D\uDC89 (mmol/L)", state.bloodSugar, vm::setSugar, "请输入血糖", KeyboardType.Decimal)
+                    when (selectedTab) {
+                        VitalRecordTab.WEIGHT -> {
+                            BigField("体重 (斤)", state.weight, vm::setWeight, "请输入体重", KeyboardType.Decimal)
+                        }
+                        VitalRecordTab.BLOOD_PRESSURE -> {
+                            BigField("高压 (mmHg)", state.systolic, vm::setSys, "请输入高压", KeyboardType.Number)
+                            BigField("低压 (mmHg)", state.diastolic, vm::setDia, "请输入低压", KeyboardType.Number)
+                            BigField("脉率 (次/分)", state.heartRate, vm::setHr, "请输入脉率", KeyboardType.Number)
+                        }
+                        VitalRecordTab.BLOOD_SUGAR -> {
+                            BigField("血糖 (mmol/L)", state.bloodSugar, vm::setSugar, "请输入血糖", KeyboardType.Decimal)
+                        }
+                    }
                     OutlinedTextField(
                         value = state.note,
                         onValueChange = vm::setNote,
@@ -76,12 +102,14 @@ fun VitalSignsScreen(onClose: () -> Unit) {
                 Surface(shadowElevation = 8.dp) {
                     Box(Modifier.padding(16.dp)) {
                         PrimaryBigButton("保存", onClick = {
-                            if (vm.isAllEmpty()) {
-                                validationMessage = "请至少填写一项体征数据。"
-                            } else if (vm.bloodPressurePairMessage() != null) {
+                            if (vm.isCurrentTabEmpty(selectedTab)) {
+                                validationMessage = "请填写当前标签页的体征数据。"
+                            } else if (selectedTab == VitalRecordTab.BLOOD_PRESSURE &&
+                                vm.bloodPressurePairMessage() != null
+                            ) {
                                 validationMessage = vm.bloodPressurePairMessage()
                             } else {
-                                saveAndHandle(vm) { alerts ->
+                                saveAndHandle(vm, selectedTab) { alerts ->
                                     if (alerts.isNotEmpty()) abnormalAlertMessage = alerts.joinToString("\n")
                                     else { UiFeedbackBus.show("已保存体征记录"); onClose() }
                                 }
@@ -147,8 +175,12 @@ fun VitalSignsScreen(onClose: () -> Unit) {
 }
 
 /** 触发 VM 保存并把结果回传 */
-private fun saveAndHandle(vm: VitalSignsViewModel, onDone: (List<String>) -> Unit) {
-    vm.save { alerts -> onDone(alerts) }
+private fun saveAndHandle(
+    vm: VitalSignsViewModel,
+    tab: VitalRecordTab,
+    onDone: (List<String>) -> Unit
+) {
+    vm.save(tab) { alerts -> onDone(alerts) }
 }
 
 @Composable

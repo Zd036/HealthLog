@@ -33,6 +33,7 @@ import com.rooftop.healthlog.ui.medication.MedicationScreen
 import com.rooftop.healthlog.ui.settings.SettingsScreen
 import com.rooftop.healthlog.ui.settings.SettingsViewModel
 import com.rooftop.healthlog.ui.intakeoutput.IntakeOutputScreen
+import com.rooftop.healthlog.ui.vitalsigns.VitalRecordTab
 import com.rooftop.healthlog.ui.vitalsigns.VitalSignsScreen
 import com.rooftop.healthlog.ui.components.UiFeedbackBus
 
@@ -104,7 +105,7 @@ fun MainScaffold(modifier: Modifier = Modifier) {
                 when (tab) {
                     MainTab.Home -> HomeScreen(
                         onRecordIntakeOutput = { intake -> sub = SubScreen.IntakeOutput(intake) },
-                        onRecordVitalSigns = { sub = SubScreen.VitalSigns }
+                        onRecordVitalSigns = { tab -> sub = SubScreen.VitalSigns(tab) }
                     )
                     MainTab.History -> HistoryScreen()
                     MainTab.Medication -> MedicationScreen()
@@ -124,7 +125,7 @@ fun MainScaffold(modifier: Modifier = Modifier) {
             },
             onVitalSigns = {
                 showAddSheet = false
-                sub = SubScreen.VitalSigns
+                sub = SubScreen.VitalSigns(VitalRecordTab.WEIGHT)
             }
         )
     }
@@ -148,7 +149,10 @@ fun MainScaffold(modifier: Modifier = Modifier) {
                 startWithIntake = s.intake,
                 onClose = { sub = SubScreen.None }
             )
-            SubScreen.VitalSigns -> VitalSignsScreen(onClose = { sub = SubScreen.None })
+            is SubScreen.VitalSigns -> VitalSignsScreen(
+                initialTab = s.tab,
+                onClose = { sub = SubScreen.None }
+            )
             SubScreen.None -> {}
         }
     }
@@ -166,7 +170,7 @@ enum class MainTab(val title: String, val icon: ImageVector) {
 sealed interface SubScreen {
     data object None : SubScreen
     data class IntakeOutput(val intake: Boolean) : SubScreen
-    data object VitalSigns : SubScreen
+    data class VitalSigns(val tab: VitalRecordTab) : SubScreen
 }
 
 /** 5 段底部导航：首页 / 历史 / [+大加号] / 用药 / 设置 */

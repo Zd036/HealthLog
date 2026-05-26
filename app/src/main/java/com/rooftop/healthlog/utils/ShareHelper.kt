@@ -1,5 +1,7 @@
 package com.rooftop.healthlog.utils
 
+import android.content.ActivityNotFoundException
+import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
@@ -7,6 +9,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Rect
+import android.graphics.RectF
 import android.graphics.Typeface
 import android.net.Uri
 import android.text.Layout
@@ -21,9 +24,10 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-/** 渲染一张"今日健康记录"图片并通过系统分享 */
+/** 渲染一张"今日健康记录"图片并直接调起微信发送 */
 object ShareHelper {
 
+    private const val WECHAT_PACKAGE_NAME = "com.tencent.mm"
     private const val WIDTH = 1080
     private const val PADDING = 48
     private const val BG = 0xFFFFFFFF.toInt()
@@ -32,17 +36,20 @@ object ShareHelper {
     private const val HINT = 0xFF9E9E9E.toInt()
     private const val DANGER = 0xFFF44336.toInt()
     private const val SUCCESS = 0xFF4CAF50.toInt()
-    private const val CARD_BG = 0xFFF5F9FF.toInt()
-    private const val SECTION_TITLE_HEIGHT = 84
+    private const val WARNING = 0xFFFFC107.toInt()
+    private const val CARD_BG = 0xFFFFFFFF.toInt()
+    private const val PANEL_BG = 0xFFF3F6FA.toInt()
+    private const val SECTION_TITLE_HEIGHT = 108
+    private const val SECTION_TITLE_ONLY_HEIGHT = 72
     private const val LINE_TEXT_SIZE = 38f
     private const val CARD_BOTTOM_PADDING = 24
     private const val CARD_INNER_HORIZONTAL = 24
     private const val SECTION_TOP_GAP = 40
-    private const val ROW_GAP = 16
+    private const val ROW_GAP = 10
     private const val MED_COLUMN_GAP = 20
     private const val MED_TIME_SAMPLE = "00:00"
     private const val MED_STATUS_SAMPLE = "[已服用]"
-    private const val VITAL_NAME_SAMPLE = "低压"
+    private const val VITAL_NAME_SAMPLE = "脉率"
 
     /** 渲染并保存图片；返回文件 */
     fun renderDailyReport(
@@ -75,7 +82,7 @@ object ShareHelper {
         return file
     }
 
-    /** 保存并弹起系统分享 */
+    /** 保存并直接调起微信分享 */
     fun shareDailyReport(
         context: Context,
         dayLabel: String,
@@ -96,27 +103,40 @@ object ShareHelper {
             context, "${context.packageName}.fileprovider", file
         )
         val intent = Intent(Intent.ACTION_SEND).apply {
+            setPackage(WECHAT_PACKAGE_NAME)
             type = "image/png"
             putExtra(Intent.EXTRA_STREAM, uri)
             putExtra(Intent.EXTRA_SUBJECT, "HealthLog · $dayLabel 健康记录")
+            clipData = ClipData.newUri(context.contentResolver, file.name, uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
-        val chooser = Intent.createChooser(intent, "分享当天记录")
-        chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        context.startActivity(chooser)
+        try {
+            context.startActivity(intent)
+        } catch (_: ActivityNotFoundException) {
+            throw IllegalStateException("未安装微信或当前微信版本不支持图片分享")
+        }
     }
 
     // ------- 渲染辅助 -------
-    private data class Section(val title: String, val rows: List<ShareRow>)
+    private data class Section(
+        val title: String,
+        val subtitle: String?,
+        val accentColor: Int,
+        val rows: List<ShareRow>
+    )
 
     private sealed interface ShareRow {
-        data class Paragraph(val text: String, val color: Int) : ShareRow
+        data class Paragraph(
+            val text: String,
+            val color: Int,
+            val emphasized: Boolean = false
+        ) : ShareRow
         data class Medication(val time: String, val status: String, val names: String, val color: Int) : ShareRow
         data class Vital(
-            val time: String,
             val name: String,
             val value: String,
+            val time: String,
             val delta: String?,
             val color: Int
         ) : ShareRow
@@ -137,41 +157,33 @@ object ShareHelper {
         if (showIntakeOutput) {
             val io = mutableListOf<ShareRow>()
             if (!hasIntakeOutput) {
-                io += ShareRow.Paragraph("今日暂无出入量记录", HINT)
+                io += ShareRow.Paragraph("今日未记录", HINT)
             } else {
-                io += ShareRow.Paragraph("总摄入：$intakeTotal ml", TEXT)
-                val outputText = if (stoolCount > 0) "（大便 $stoolCount 次）" else ""
-                io += ShareRow.Paragraph("总排出：$outputTotal ml$outputText", TEXT)
+                io += ShareRow.Paragraph("总摄入：$intakeTotal ml", DANGER, emphasized = true)
+                io += ShareRow.Paragraph("总排出：$outputTotal ml", SUCCESS, emphasized = true)
+                io += ShareRow.Paragraph("大便次数：$stoolCount 次", TEXT)
                 val diff = intakeTotal - outputTotal
                 val color = when {
                     diff < 0 -> SUCCESS
                     diff < 200 -> TEXT
-                    diff < 500 -> 0xFFFFC107.toInt()
+                    diff < 500 -> WARNING
                     else -> DANGER
                 }
                 val sign = if (diff >= 0) "+" else ""
-                io += ShareRow.Paragraph("差值：$sign$diff ml", color)
+                io += ShareRow.Paragraph("差值：$sign$diff ml", color, emphasized = true)
             }
-            list += Section("今日出入量", io)
+            list += Section("今日出入量", null, PRIMARY, io)
         }
         val vitalLines = if (recentVitals.isEmpty()) {
-            listOf(ShareRow.Paragraph("今日暂无体征记录", HINT))
+            defaultShareVitalRows()
         } else {
-            recentVitals.map { item ->
-                ShareRow.Vital(
-                    time = item.timeText,
-                    name = item.nameText,
-                    value = item.valueText,
-                    delta = item.deltaText,
-                    color = if (item.abnormal) DANGER else TEXT
-                )
-            }
+            buildShareVitalRows(recentVitals)
         }
-        list += Section("今日体征", vitalLines)
+        list += Section("今日体征", null, PRIMARY, vitalLines)
 
         val medLines = mutableListOf<ShareRow>()
         if (medications.isEmpty()) {
-            medLines += ShareRow.Paragraph("今日暂无服药记录", HINT)
+            medLines += ShareRow.Paragraph("今日未记录", HINT)
         } else {
             val groupedItems = HistoryViewModel.groupMedicationRecords(medications)
             for (item in groupedItems.take(8)) {
@@ -189,10 +201,10 @@ object ShareHelper {
                 medLines += ShareRow.Paragraph("... 共 ${groupedItems.size} 个时间点", HINT)
             }
         }
-        list += Section("今日用药", medLines)
+        list += Section("今日用药", null, PRIMARY, medLines)
 
         if (alerts.isNotEmpty()) {
-            list += Section("异常提示", alerts.map { ShareRow.Paragraph(it, DANGER) })
+            list += Section("异常提示", null, DANGER, alerts.map { ShareRow.Paragraph(it, DANGER) })
         }
         return list
     }
@@ -205,8 +217,9 @@ object ShareHelper {
         h += 30 // subtitle gap
         for (s in sections) {
             h += SECTION_TOP_GAP
-            h += SECTION_TITLE_HEIGHT
+            h += sectionHeaderHeight(s)
             h += measureRowsHeight(s.rows, linePaint, monoPaint)
+            h += 28 // 内层信息面板额外留白
             h += CARD_BOTTOM_PADDING
         }
         h += 80 // footer
@@ -225,13 +238,19 @@ object ShareHelper {
             textSize = 34f
         }
         val sectionPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = PRIMARY
+            color = TEXT
             textSize = 44f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
+        val sectionSubPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = HINT
+            textSize = 30f
+        }
         val linePaint = bodyTextPaint()
         val monoPaint = medicationTimePaint()
-        val cardPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { color = CARD_BG }
+        val cardPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = CARD_BG }
+        val panelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = PANEL_BG }
+        val iconPaint = Paint(Paint.ANTI_ALIAS_FLAG)
 
         var y = PADDING + 64f
         canvas.drawText("HealthLog · 今日健康记录", PADDING.toFloat(), y, titlePaint)
@@ -243,15 +262,38 @@ object ShareHelper {
             y += SECTION_TOP_GAP.toFloat()
             val cardTop = y - 6f
             val rowsHeight = measureRowsHeight(s.rows, linePaint, monoPaint)
-            val cardBottom = y + SECTION_TITLE_HEIGHT + rowsHeight + CARD_BOTTOM_PADDING - 8f
-            val rect = android.graphics.RectF(
+            val headerHeight = sectionHeaderHeight(s).toFloat()
+            val panelTop = y + headerHeight
+            val panelBottom = panelTop + rowsHeight + 28f
+            val cardBottom = panelBottom + CARD_BOTTOM_PADDING - 8f
+            val rect = RectF(
                 PADDING.toFloat(), cardTop,
                 (WIDTH - PADDING).toFloat(), cardBottom
             )
             canvas.drawRoundRect(rect, 24f, 24f, cardPaint)
-            y += 60f
-            canvas.drawText(s.title, (PADDING + 24).toFloat(), y, sectionPaint)
-            val rowsTop = y + 24f
+            drawSectionIcon(
+                canvas = canvas,
+                left = (PADDING + 24).toFloat(),
+                top = y + 20f,
+                color = s.accentColor,
+                paint = iconPaint
+            )
+            canvas.drawText(s.title, (PADDING + 82).toFloat(), y + 54f, sectionPaint)
+            s.subtitle?.takeIf { it.isNotBlank() }?.let {
+                canvas.drawText(it, (PADDING + 82).toFloat(), y + 90f, sectionSubPaint)
+            }
+            canvas.drawRoundRect(
+                RectF(
+                    (PADDING + 18).toFloat(),
+                    panelTop,
+                    (WIDTH - PADDING - 18).toFloat(),
+                    panelBottom
+                ),
+                20f,
+                20f,
+                panelPaint
+            )
+            val rowsTop = panelTop + 14f
             y = drawRows(canvas, s.rows, rowsTop, linePaint, monoPaint)
             y += CARD_BOTTOM_PADDING.toFloat()
         }
@@ -272,6 +314,10 @@ object ShareHelper {
         )
         // avoid unused warning
         Color.alpha(BG)
+    }
+
+    private fun sectionHeaderHeight(section: Section): Int {
+        return if (section.subtitle.isNullOrBlank()) SECTION_TITLE_ONLY_HEIGHT else SECTION_TITLE_HEIGHT
     }
 
     private fun bodyTextPaint(): TextPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -342,6 +388,32 @@ object ShareHelper {
         return text
     }
 
+    private fun defaultShareVitalRows(): List<ShareRow.Vital> = listOf(
+        ShareRow.Vital(name = "体重", value = "今日未记录", time = "--:--", delta = null, color = HINT),
+        ShareRow.Vital(name = "血压", value = "今日未记录", time = "--:--", delta = null, color = HINT),
+        ShareRow.Vital(name = "脉率", value = "今日未记录", time = "--:--", delta = null, color = HINT),
+        ShareRow.Vital(name = "血糖", value = "今日未记录", time = "--:--", delta = null, color = HINT)
+    )
+
+    private fun buildShareVitalRows(recentVitals: List<RecentVitalItem>): List<ShareRow.Vital> {
+        val map = recentVitals.associateBy { it.kind }
+        val defaults = defaultShareVitalRows().associateBy { it.name }
+        return listOf(
+            map[RecentVitalKind.WEIGHT]?.toShareVitalRow() ?: defaults.getValue("体重"),
+            map[RecentVitalKind.BLOOD_PRESSURE]?.toShareVitalRow() ?: defaults.getValue("血压"),
+            map[RecentVitalKind.HEART_RATE]?.copy(nameText = "脉率")?.toShareVitalRow() ?: defaults.getValue("脉率"),
+            map[RecentVitalKind.BLOOD_SUGAR]?.toShareVitalRow() ?: defaults.getValue("血糖")
+        )
+    }
+
+    private fun RecentVitalItem.toShareVitalRow(): ShareRow.Vital = ShareRow.Vital(
+        name = nameText,
+        value = valueText,
+        time = timeText,
+        delta = deltaText,
+        color = if (abnormal) DANGER else TEXT
+    )
+
     private fun drawRows(
         canvas: Canvas,
         rows: List<ShareRow>,
@@ -368,6 +440,10 @@ object ShareHelper {
         linePaint: TextPaint
     ): Float {
         val paint = linePaint.copyWithColor(row.color)
+        if (row.emphasized) {
+            paint.textSize = 40f
+            paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
         val layout = paragraphLayout(row.text, paint)
         canvas.save()
         canvas.translate(contentLeft(), top)
@@ -413,23 +489,22 @@ object ShareHelper {
         monoPaint: TextPaint
     ): Float {
         val timePaint = monoPaint.copyWithColor(HINT)
-        val namePaint = linePaint.copyWithColor(if (row.color == DANGER) DANGER else TEXT)
+        val namePaint = linePaint.copyWithColor(if (row.color == DANGER) DANGER else HINT)
         val valuePaint = linePaint.copyWithColor(row.color)
-        val timeWidth = timeColumnWidth(timePaint)
         val nameWidth = vitalNameColumnWidth(namePaint)
         val left = contentLeft()
-        val nameLeft = left + timeWidth + MED_COLUMN_GAP
-        val valueLeft = nameLeft + nameWidth + MED_COLUMN_GAP
+        val valueLeft = left + nameWidth + MED_COLUMN_GAP
+        val timeLeft = valueLeft + vitalValueWidth(linePaint, monoPaint) + MED_COLUMN_GAP
         val valueLayout = paragraphLayout(buildVitalValueText(row), valuePaint, vitalValueWidth(linePaint, monoPaint))
         val firstLineBaseline = top + valueLayout.getLineBaseline(0)
 
-        canvas.drawText(row.time, left, firstLineBaseline, timePaint)
-        canvas.drawText(row.name, nameLeft, firstLineBaseline, namePaint)
+        canvas.drawText(row.name, left, firstLineBaseline, namePaint)
 
         canvas.save()
         canvas.translate(valueLeft, top)
         valueLayout.draw(canvas)
         canvas.restore()
+        canvas.drawText(row.time, timeLeft, firstLineBaseline, timePaint)
         return maxOf(valueLayout.height.toFloat(), singleLineHeight(linePaint).toFloat())
     }
 
@@ -477,6 +552,19 @@ object ShareHelper {
         deltaText.startsWith("+") -> DANGER
         deltaText.startsWith("-") -> SUCCESS
         else -> HINT
+    }
+
+    private fun drawSectionIcon(
+        canvas: Canvas,
+        left: Float,
+        top: Float,
+        color: Int,
+        paint: Paint
+    ) {
+        paint.color = (color and 0x00FFFFFF) or 0x1F000000
+        canvas.drawCircle(left + 18f, top + 18f, 18f, paint)
+        paint.color = color
+        canvas.drawCircle(left + 18f, top + 18f, 9f, paint)
     }
 
     private fun TextPaint.copyWithColor(color: Int): TextPaint = TextPaint(this).apply {

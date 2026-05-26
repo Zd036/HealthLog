@@ -51,7 +51,7 @@ private fun MedicationItem(r: MedicationHistoryItem) {
                 Column(Modifier.width(96.dp)) {
                     Text(
                         DateUtils.formatHm(r.scheduledTime),
-                        style = MaterialTheme.typography.titleMedium
+                        style = historyTimeTextStyle(MaterialTheme.typography.titleMedium)
                     )
                     Text(
                         "服药",

@@ -10,14 +10,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
+import com.rooftop.healthlog.ui.history.DateRange
 import com.rooftop.healthlog.ui.history.MedicationHistoryItem
 import com.rooftop.healthlog.ui.theme.*
 import com.rooftop.healthlog.utils.MEDICATION_STATUS_TAKEN
 
 /** 服药依从率柱状图（每日按时率 0~1） */
 @Composable
-fun MedicationComplianceChart(records: List<MedicationHistoryItem>, days: Int) {
-    val dayStarts = remember(days) { dayStartsForRange(days) }
+fun MedicationComplianceChart(records: List<MedicationHistoryItem>, range: DateRange) {
+    val dayStarts = remember(range, records) {
+        dayStartsForRange(range, records.minOfOrNull { it.scheduledTime })
+    }
     val oneDay = 24L * 3600_000L
     val ratios: List<Float?> = dayStarts.map { ds ->
         val end = ds + oneDay
