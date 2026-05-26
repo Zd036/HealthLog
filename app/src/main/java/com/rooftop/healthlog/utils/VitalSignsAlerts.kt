@@ -3,8 +3,6 @@ package com.rooftop.healthlog.utils
 import com.rooftop.healthlog.data.local.entity.VitalSignsRecord
 import java.util.Locale
 
-private const val ONE_DAY_MS = 24L * 3600_000L
-
 enum class WeightTrend { UP, DOWN, FLAT }
 
 data class WeightTrendInfo(
@@ -12,6 +10,16 @@ data class WeightTrendInfo(
     val diff: Float,
     val warningMessage: String?
 )
+
+data class WeightDayComparison(
+    val dayStart: Long,
+    val firstRecord: VitalSignsRecord,
+    val latestRecord: VitalSignsRecord,
+    val previousDayFirstRecord: VitalSignsRecord?
+) {
+    val delta: Float? = weightGainDelta(firstRecord.weight, previousDayFirstRecord?.weight)
+    val abnormal: Boolean get() = isRapidWeightGain(delta)
+}
 
 enum class RecentVitalKind {
     BLOOD_PRESSURE,
@@ -69,7 +77,45 @@ fun weightGainDelta(currentWeight: Float?, previousWeight: Float?): Float? =
 fun isRapidWeightGain(delta: Float?): Boolean = delta != null && delta >= 1f
 
 fun rapidWeightGainMessage(delta: Float): String =
-    "24小时内体重增加 ${"%.1f".format(Locale.CHINA, delta)} 斤，提示可能存在水潴留，请及时就医检查"
+    "较昨日首次体重增加 ${"%.1f".format(Locale.CHINA, delta)} 斤，提示可能存在水潴留，请及时就医检查"
+
+private fun groupedWeightRecordsByDay(records: List<VitalSignsRecord>): Map<Long, List<VitalSignsRecord>> =
+    records.asSequence()
+        .filter { it.weight != null }
+        .groupBy { DateUtils.dayStartOf(it.time) }
+        .mapValues { (_, dayRecords) -> dayRecords.sortedBy { it.time } }
+
+fun buildDailyWeightComparisons(records: List<VitalSignsRecord>): Map<Long, WeightDayComparison> {
+    val grouped = groupedWeightRecordsByDay(records)
+    return grouped.keys.associateWith { dayStart ->
+        val dayRecords = grouped.getValue(dayStart)
+        val previousDayStart = DateUtils.dayStartOf(dayStart - 1L)
+        WeightDayComparison(
+            dayStart = dayStart,
+            firstRecord = dayRecords.first(),
+            latestRecord = dayRecords.last(),
+            previousDayFirstRecord = grouped[previousDayStart]?.firstOrNull()
+        )
+    }
+}
+
+fun dailyWeightComparisonForDay(
+    records: List<VitalSignsRecord>,
+    dayStart: Long
+): WeightDayComparison? = buildDailyWeightComparisons(records)[dayStart]
+
+fun dailyFirstWeightRecords(records: List<VitalSignsRecord>): List<VitalSignsRecord> =
+    groupedWeightRecordsByDay(records).toSortedMap().values.map { it.first() }
+
+fun previousRecordedDailyFirstWeight(
+    records: List<VitalSignsRecord>,
+    dayStart: Long
+): VitalSignsRecord? = dailyFirstWeightRecords(records).lastOrNull { it.time < dayStart }
+
+private fun formatWeightDeltaText(delta: Float?): String? = delta?.let {
+    val sign = if (it > 0f) "+" else ""
+    "$sign${"%.1f".format(Locale.CHINA, it)} 斤"
+}
 
 fun computeWeightTrend(currentWeight: Float?, previousWeight: Float?): WeightTrendInfo? {
     if (currentWeight == null) return null
@@ -97,20 +143,17 @@ fun buildRecentVitalItems(
     val items = mutableListOf<RecentVitalItem>()
 
     latestFirst.firstOrNull { it.weight != null }?.let { record ->
-        val previousWeight =
-            previousWeightRecordWithin24Hours(weightWindowVitals, record.time)?.weight
-        val trend = computeWeightTrend(record.weight, previousWeight)
-        val diffText = trend?.takeIf { previousWeight != null }?.let {
-            val sign = if (it.diff > 0f) "+" else ""
-            "$sign${"%.1f".format(Locale.CHINA, it.diff)} 斤"
-        }
+        val comparison = dailyWeightComparisonForDay(
+            weightWindowVitals,
+            DateUtils.dayStartOf(record.time)
+        )
         items += RecentVitalItem(
             kind = RecentVitalKind.WEIGHT,
             timeText = DateUtils.formatHm(record.time),
             nameText = "体重",
             valueText = "${"%.1f".format(Locale.CHINA, record.weight)} 斤",
-            deltaText = diffText,
-            abnormal = isRapidWeightGain(weightGainDelta(record.weight, previousWeight)),
+            deltaText = formatWeightDeltaText(comparison?.delta),
+            abnormal = comparison?.abnormal == true,
             time = record.time
         )
     }
@@ -151,7 +194,10 @@ fun buildRecentVitalItems(
     return items
 }
 
-fun buildVitalAlertDetails(vital: VitalSignsRecord?, previousWeight: Float?): List<VitalAlert> {
+fun buildVitalAlertDetails(
+    vital: VitalSignsRecord?,
+    weightComparison: WeightDayComparison? = null
+): List<VitalAlert> {
     if (vital == null) return emptyList()
     val alerts = mutableListOf<VitalAlert>()
     val sys = vital.systolic
@@ -173,10 +219,11 @@ fun buildVitalAlertDetails(vital: VitalSignsRecord?, previousWeight: Float?): Li
             "血糖异常，${"%.1f".format(Locale.CHINA, sugar)} mmol/L"
         )
     }
-    val weight = vital.weight
-    val trend = computeWeightTrend(weight, previousWeight)
-    if (trend?.warningMessage != null) {
-        alerts += VitalAlert(VitalAlertKind.WEIGHT_GAIN, trend.warningMessage)
+    val effectiveWeightComparison = weightComparison?.takeIf {
+        vital.weight != null && it.firstRecord.time == vital.time
+    }
+    effectiveWeightComparison?.delta?.takeIf(::isRapidWeightGain)?.let { delta ->
+        alerts += VitalAlert(VitalAlertKind.WEIGHT_GAIN, rapidWeightGainMessage(delta))
     }
     return alerts
 }
@@ -214,22 +261,18 @@ fun buildDailyVitalAlertMessages(alertWindowVitals: List<VitalSignsRecord>): Lis
                 "${"%.1f".format(Locale.CHINA, it)} mmol/L"
             )
         }
-        record.weight?.let { weight ->
-            val previousWeight = previousWeightRecordWithin24Hours(ordered, record.time)?.weight
-            val delta = weightGainDelta(weight, previousWeight)
-            if (isRapidWeightGain(delta)) {
-                upsert(
-                    VitalAlertKind.WEIGHT_GAIN,
-                    record.time,
-                    "较24小时前增加 ${"%.1f".format(Locale.CHINA, delta)} 斤（当前 ${
-                        "%.1f".format(
-                            Locale.CHINA,
-                            weight
-                        )
-                    } 斤）"
-                )
-            }
-        }
+    }
+
+    dailyWeightComparisonForDay(ordered, todayStart)?.takeIf { it.abnormal }?.let { comparison ->
+        val delta = comparison.delta ?: return@let
+        val firstWeight = comparison.firstRecord.weight ?: return@let
+        upsert(
+            VitalAlertKind.WEIGHT_GAIN,
+            comparison.firstRecord.time,
+            "较昨日首次增加 ${"%.1f".format(Locale.CHINA, delta)} 斤（今日首次 ${
+                "%.1f".format(Locale.CHINA, firstWeight)
+            } 斤）"
+        )
     }
 
     val order = listOf(
@@ -260,10 +303,3 @@ fun buildDailyVitalAlertMessages(alertWindowVitals: List<VitalSignsRecord>): Lis
         }
     }
 }
-
-fun previousWeightRecordWithin24Hours(
-    records: List<VitalSignsRecord>,
-    currentTime: Long
-): VitalSignsRecord? = records.asSequence()
-    .filter { it.weight != null && it.time < currentTime && it.time >= currentTime - ONE_DAY_MS }
-    .maxByOrNull { it.time }

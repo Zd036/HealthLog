@@ -14,35 +14,25 @@ import androidx.compose.ui.unit.dp
 import com.rooftop.healthlog.data.local.entity.VitalSignsRecord
 import com.rooftop.healthlog.ui.history.DateRange
 import com.rooftop.healthlog.ui.theme.*
+import com.rooftop.healthlog.utils.buildDailyWeightComparisons
 import com.rooftop.healthlog.utils.isBloodSugarAbnormal
 import com.rooftop.healthlog.utils.isDiastolicAbnormal
 import com.rooftop.healthlog.utils.isHeartRateAbnormal
-import com.rooftop.healthlog.utils.isRapidWeightGain
 import com.rooftop.healthlog.utils.isSystolicAbnormal
-import com.rooftop.healthlog.utils.previousWeightRecordWithin24Hours
-import com.rooftop.healthlog.utils.weightGainDelta
 
 @Composable
 fun WeightChart(records: List<VitalSignsRecord>, range: DateRange) {
     val dayStarts = remember(range, records) {
         dayStartsForRange(range, records.minOfOrNull { it.time })
     }
-    val dailyRecords = remember(records, dayStarts) {
-        dayStarts.map { dayStart ->
-            records
-                .filter { it.weight != null && it.time in dayStart until (dayStart + 24L * 3600_000L) }
-                .maxByOrNull { it.time }
-        }
+    val dailyComparisons = remember(records) { buildDailyWeightComparisons(records) }
+    val dailyRecords = remember(dayStarts, dailyComparisons) {
+        dayStarts.map { dayStart -> dailyComparisons[dayStart]?.firstRecord }
     }
     val vals = dailyRecords.map { it?.weight }
-    val highlights = remember(records, dailyRecords) {
-        dailyRecords.map { current ->
-            val prev = current?.let { previousWeightRecordWithin24Hours(records, it.time) }
-            if (current != null && isRapidWeightGain(weightGainDelta(current.weight, prev?.weight))) {
-                DangerRed
-            } else {
-                null
-            }
+    val highlights = remember(dayStarts, dailyComparisons) {
+        dayStarts.map { dayStart ->
+            if (dailyComparisons[dayStart]?.abnormal == true) DangerRed else null
         }
     }
     val nonNull = vals.filterNotNull()
@@ -61,7 +51,7 @@ fun WeightChart(records: List<VitalSignsRecord>, range: DateRange) {
                 lineColor = Color(0xFF9C27B0), normalDotColor = Color(0xFF9C27B0))
         }
         Spacer(Modifier.height(6.dp))
-        Legend(listOf(Color(0xFF9C27B0) to "体重", DangerRed to "24小时增加≥1斤"))
+        Legend(listOf(Color(0xFF9C27B0) to "体重", DangerRed to "较昨日首次增加≥1斤"))
     }
 }
 

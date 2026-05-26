@@ -13,12 +13,10 @@ import androidx.compose.ui.unit.dp
 import com.rooftop.healthlog.data.local.entity.VitalSignsRecord
 import com.rooftop.healthlog.ui.theme.*
 import com.rooftop.healthlog.utils.DateUtils
+import com.rooftop.healthlog.utils.buildDailyWeightComparisons
 import com.rooftop.healthlog.utils.isBloodPressureAbnormal
 import com.rooftop.healthlog.utils.isBloodSugarAbnormal
 import com.rooftop.healthlog.utils.isHeartRateAbnormal
-import com.rooftop.healthlog.utils.isRapidWeightGain
-import com.rooftop.healthlog.utils.previousWeightRecordWithin24Hours
-import com.rooftop.healthlog.utils.weightGainDelta
 
 enum class VitalHistoryTab(val label: String) {
     WEIGHT("体重"),
@@ -40,11 +38,16 @@ fun LazyListScope.vitalSignsList(records: List<VitalSignsRecord>, tab: VitalHist
         item { EmptyHint("暂无体征记录") }
         return
     }
+    val dailyWeightComparisons = if (tab == VitalHistoryTab.WEIGHT) {
+        buildDailyWeightComparisons(filtered)
+    } else {
+        emptyMap()
+    }
     val groups = groupByDay(filtered.map { it.time })
     for ((dayTs, indices) in groups) {
         item(key = "vhdr-$dayTs") { DayGroupHeader(dayTs) }
         items(indices.size, key = { i -> "v-${filtered[indices[i]].id}" }) { idx ->
-            VitalSignsItem(filtered[indices[idx]], filtered, tab)
+            VitalSignsItem(filtered[indices[idx]], tab, dailyWeightComparisons)
         }
     }
 }
@@ -52,14 +55,14 @@ fun LazyListScope.vitalSignsList(records: List<VitalSignsRecord>, tab: VitalHist
 @Composable
 private fun VitalSignsItem(
     v: VitalSignsRecord,
-    all: List<VitalSignsRecord>,
-    tab: VitalHistoryTab
+    tab: VitalHistoryTab,
+    dailyWeightComparisons: Map<Long, com.rooftop.healthlog.utils.WeightDayComparison>
 ) {
     val bpAbnormal = isBloodPressureAbnormal(v.systolic, v.diastolic)
     val hrAbnormal = isHeartRateAbnormal(v.heartRate)
     val bsAbnormal = isBloodSugarAbnormal(v.bloodSugar)
-    val prevWeightRecord = previousWeightRecordWithin24Hours(all, v.time)
-    val weightAbnormal = isRapidWeightGain(weightGainDelta(v.weight, prevWeightRecord?.weight))
+    val weightComparison = dailyWeightComparisons[DateUtils.dayStartOf(v.time)]
+    val weightAbnormal = weightComparison?.abnormal == true && weightComparison.firstRecord.id == v.id
 
     Card(
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),

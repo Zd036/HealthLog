@@ -4,9 +4,12 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.rooftop.healthlog.HealthLogApp
 import com.rooftop.healthlog.data.local.entity.VitalSignsRecord
+import com.rooftop.healthlog.utils.DateUtils
 import com.rooftop.healthlog.utils.buildVitalAlertDetails
+import com.rooftop.healthlog.utils.dailyWeightComparisonForDay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -124,7 +127,15 @@ class VitalSignsViewModel(app: HealthLogApp) : AndroidViewModel(app) {
         }
         viewModelScope.launch {
             repo.insert(record)
-            onDone(buildVitalAlertDetails(record, null).map { it.message })
+            val weightComparison = if (tab == VitalRecordTab.WEIGHT) {
+                val dayStart = DateUtils.dayStartOf(record.time)
+                val dayEnd = DateUtils.dayRangeOf(record.time).second
+                val records = repo.between(DateUtils.daysAgoStart(1), dayEnd).first()
+                dailyWeightComparisonForDay(records, dayStart)
+            } else {
+                null
+            }
+            onDone(buildVitalAlertDetails(record, weightComparison).map { it.message })
         }
     }
 }
